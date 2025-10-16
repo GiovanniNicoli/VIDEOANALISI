@@ -1,0 +1,5 @@
+{
+  "name": "VIDEO ANALISI CC-CARE - REBESCO",
+  "description": "Un'applicazione per caricare un video, trascriverlo e registrare eventi di interazione genitore-bambino per analisi e esportazione.",
+  "requestFramePermissions": []
+}
