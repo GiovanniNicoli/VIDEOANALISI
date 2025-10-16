@@ -6,17 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Analizzatore Interazione Video</title>
     <script src="https://cdn.tailwindcss.com"></script>
-  <script type="importmap">
-{
-  "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.25.0"
-  }
-}
-</script>
-  <style>
+    <style>
       /* Custom Scrollbar for Webkit browsers */
       ::-webkit-scrollbar {
         width: 8px;
@@ -33,9 +23,954 @@
         background: #64748b; /* slate-500 */
       }
     </style>
-</head>
+  </head>
   <body class="bg-slate-900 text-white">
     <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
+
+    <!-- Dependencies for running React without a build step -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Consolidated Application Code -->
+    <script type="text/babel">
+// From utils/constants.ts
+const COMM_MODES = ["VERBAL (VT)", "GESTURAL (GT)", "BOTH GESTURAL AND VERBAL", "NO RESPONSE WAS PROVIDED (*)"];
+const VOCALIZATION_TYPES = ["SVI", "SV", "SVC", "SV+C", "PB", "P", "F", "S", "NONE (IF THE MODE WAS GESTURAL)"];
+const SHARED_ATTENTION_OPTS = ["OBSERVED", "NOT OBSERVED"];
+const SEMANTIC_OPTS = ["SI", "NO"];
+
+const PARENT_COMM_STRATEGIES = [
+    { id: 'repeat', label: 'a. Repeat the child’s verbalization' },
+    { id: 'expand', label: 'b. Expand/restructure child’s verbal or gestural turn' },
+    { id: 'reformulate', label: 'c. Verbally reformulate/denominate child’s actions' },
+    { id: 'paraphrase', label: 'd. Paraphrase child’s verbalization' },
+    { id: 'reference', label: 'e. Make references to shared experiences, roles, format, routines' },
+    { id: 'encourage', label: 'f. Encourage the child' },
+    { id: 'attention', label: 'g. Pay attention to the child' },
+    { id: 'closedQuestions', label: 'h. Ask closed questions' },
+    { id: 'complexInfo', label: 'i. Provide complex descriptions or complex verbal information' },
+    { id: 'denominate', label: 'j. Denominate objects' },
+    { id: 'demonstrate', label: 'k. Demonstrate actions' },
+    { id: 'askRepetitions', label: 'l. Ask for repetitions' },
+    { id: 'correct', label: 'm. Correct child’s verbal or non-verbal behavior' },
+    { id: 'controlAttention', label: 'n. Control child’s attention' },
+    { id: 'initiative', label: 'o. Show communicative initiative' },
+    { id: 'openQuestions', label: 'p. Formulate open questions' },
+    { id: 'selfAnswers', label: 'q. Self-answers' },
+    { id: 'empathic', label: 'r. Make empathic comments' },
+    { id: 'topicChange', label: 's. Sudden topic changes' },
+    { id: 'selfReformulate', label: 't. Self-reformulate' },
+    { id: 'intrusion', label: 'u. Make intrusion in the child’s turn' },
+    { id: 'missVocal', label: 'v. Miss response to child’s vocal turn' },
+    { id: 'missTurn', label: 'z. Miss response to child’s turn' },
+    { id: 'unknownWords', label: 'a1. Use unknown/complicated words' },
+    { id: 'selfReformulate2', label: 'a2. Self-reformulate' },
+    { id: 'intrusion2', label: 'a3. Make intrusions into the child’s turn' },
+];
+
+const PARENT_COMM_STYLES = {
+    repeat: ['T'],
+    expand: ['T'],
+    reformulate: ['T'],
+    paraphrase: ['T'],
+    reference: ['T'],
+    encourage: ['T'],
+    attention: ['T'],
+    closedQuestions: ['D', 'DC'],
+    complexInfo: ['D'],
+    denominate: ['D'],
+    demonstrate: ['D'],
+    askRepetitions: ['D'],
+    correct: ['D'],
+    controlAttention: ['DC'],
+    initiative: ['DC'],
+    openQuestions: ['C'],
+    selfAnswers: ['C'],
+    empathic: ['C'],
+    topicChange: ['C'],
+    selfReformulate: ['C'],
+    intrusion: [], // Not specified
+    missVocal: [], // Not specified
+    missTurn: [], // Not specified
+    unknownWords: [], // Not specified
+    selfReformulate2: ['C'], // Assuming same as 'selfReformulate'
+    intrusion2: [], // Not specified
+};
+
+// From utils/exportUtils.ts
+const formatTimeForTxt = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toFixed(2).padStart(5, '0')}`;
+};
+
+const formatTurnForTxt = (turn, index) => {
+    let content = `--- TURNO ${index + 1} @ ${formatTimeForTxt(turn.timestamp)} ---\n\n`;
+
+    content += `[DESCRIZIONE]\n`;
+    content += `Parent Action: ${turn.parentAction || 'N/A'}\n`;
+    content += `Parent Speech: ${turn.parentSpeech || 'N/A'}\n`;
+    content += `Child Action: ${turn.childAction || 'N/A'}\n`;
+    content += `Child Speech: ${turn.childSpeech || 'N/A'}\n`;
+    content += `Eye Contact Present: ${turn.eyeContact ? 'Yes' : 'No'}\n`;
+    content += `Overlapping Dialogue: ${turn.overlappingDialogue ? 'Yes' : 'No'}\n`;
+    content += `\n`;
+
+    if (turn.classification) {
+        const c = turn.classification;
+        content += `[CLASSIFICAZIONE]\n`;
+        content += `1. Communication Mode: ${c.communicationMode || 'N/A'}\n`;
+        content += `2. Vocalization Type: ${c.vocalizationType || 'N/A'}\n`;
+        content += `3. Shared Attention: ${c.sharedAttention || 'N/A'}\n`;
+        
+        const strategies = PARENT_COMM_STRATEGIES
+            .filter(s => c.parentCommunication[s.id])
+            .map(s => s.label);
+        
+        content += `4. Parent Communication:\n`;
+        if (strategies.length > 0) {
+            strategies.forEach(s => {
+                content += `   - ${s}\n`;
+            });
+        } else {
+            content += `   - None\n`;
+        }
+
+        content += `5. Is the turn inadequate?: ${c.isInadequate ? 'Yes' : 'No'}\n`;
+        content += `6. Is the child providing new information?: ${c.childProvidesNewInfo ? 'Yes' : 'No'}\n`;
+        content += `7. Il bambino comprende il referente semantico?: ${c.childUnderstandsSemantic || 'N/A'}\n`;
+        content += `8. Uses only auditory channel?: ${c.usesOnlyAuditoryChannel ? 'Yes' : 'No'}\n`;
+        content += `9. Is eye contact adequate?: ${c.isEyeContactAdequate ? 'Yes' : 'No'}\n`;
+    } else {
+        content += `[CLASSIFICAZIONE NON COMPLETATA]\n`;
+    }
+
+    content += `\n--------------------------------------------\n\n`;
+    return content;
+};
+
+const exportToTxt = (turns, filename) => {
+    const fileContent = turns.map(formatTurnForTxt).join('');
+    const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8;' });
+    const link = document.createElement("a");
+    
+    if (link.download !== undefined) {
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+};
+
+const exportStatsToTxt = (stats, filename) => {
+    let content = `--- STATISTICHE DI INTERAZIONE ---\n\n`;
+    content += `Data Esportazione: ${new Date().toLocaleString()}\n\n`;
+
+    content += `--- PROFILO COMUNICATIVO ---\n`;
+    content += `Modalità Comunicativa Predominante: ${stats.communicativeMode}\n`;
+    content += `Tipo di Vocalizzazione Predominante: ${stats.predominantVocalization}\n\n`;
+
+    content += `--- METRICHE CHIAVE ---\n`;
+    content += `Consistenza del Turno (TT-CONS): ${stats.ttCons.toFixed(2)}\n`;
+    content += `Adeguatezza del Turno (TT-AD): ${stats.ttAd.toFixed(2)}\n`;
+    content += `Presenza Contatto Visivo (EC-PRES): ${stats.ecPres.toFixed(2)}\n`;
+    content += `Adeguatezza Contatto Visivo (EC-AD): ${stats.ecAd.toFixed(2)}\n`;
+    content += `Autonomia Uditiva (AUT): ${stats.aut.toFixed(2)}\n`;
+    content += `Iniziativa (IN): ${stats.in.toFixed(2)}\n\n`;
+    
+    content += `--- STILE COMUNICATIVO GENITORIALE ---\n`;
+    content += `Stile Predominante: ${stats.parentalStyle.predominantStyle}\n`;
+    content += `Distribuzione:\n`;
+    content += `  - Tutoriale: ${stats.parentalStyle.percentages.TUTORIAL.toFixed(1)}%\n`;
+    content += `  - Didattico: ${stats.parentalStyle.percentages.DIDACTIC.toFixed(1)}%\n`;
+    content += `  - Direttivo: ${stats.parentalStyle.percentages.DIRECTIVE.toFixed(1)}%\n`;
+    content += `  - Conversazionale: ${stats.parentalStyle.percentages.CONVERSATIONAL.toFixed(1)}%\n`;
+
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
+    const link = document.createElement("a");
+    
+    if (link.download !== undefined) {
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+};
+
+// From utils/statisticsCalculator.ts
+const safeDivide = (numerator, denominator) => {
+    return denominator === 0 ? 0 : numerator / denominator;
+};
+
+const calculateStatistics = (turns) => {
+    const totalTurns = turns.length;
+    const classifiedTurns = turns.filter(t => t.classification);
+
+    const isVT = (turn) => turn.classification?.communicationMode === 'VERBAL (VT)';
+    const isGT = (turn) => turn.classification?.communicationMode === 'GESTURAL (GT)';
+
+    const vtCount = classifiedTurns.filter(isVT).length;
+    const gtCount = classifiedTurns.filter(isGT).length;
+    const vtOrGtCount = vtCount + gtCount;
+
+    // Communicative Mode
+    const commModePercent = safeDivide(vtCount, totalTurns) * 100;
+    let communicativeMode = '';
+    if (commModePercent > 50) communicativeMode = 'Predominantly Verbal';
+    else if (commModePercent >= 40) communicativeMode = 'Mixed to Predominantly Verbal';
+    else if (commModePercent >= 30) communicativeMode = 'Mixed';
+    else if (commModePercent > 0) communicativeMode = 'Mixed Predominantly Gestural';
+    else communicativeMode = 'Predominantly Gestural';
+    if(vtOrGtCount === 0) communicativeMode = 'N/A';
+
+    // Vocalization Type
+    const vocalizations = classifiedTurns.map(t => t.classification?.vocalizationType).filter(Boolean);
+    const vocalizationCounts = vocalizations.reduce((acc, val) => {
+        acc[val] = (acc[val] || 0) + 1;
+        return acc;
+    }, {});
+    const predominantVocalization = vocalizations.length > 0 ? Object.keys(vocalizationCounts).reduce((a, b) => vocalizationCounts[a] > vocalizationCounts[b] ? a : b) : 'N/A';
+
+    // [TT-CONS] Consistency of Turn-Taking
+    const ttCons = safeDivide(vtOrGtCount, totalTurns);
+
+    // [TT-AD] Adequacy of Turn-Taking
+    const adequateTurns = classifiedTurns.filter(t => !t.classification?.isInadequate).length;
+    const ttAd = safeDivide(adequateTurns, totalTurns);
+
+    // [AUT] Auditory Autonomy
+    const auditoryOnlyTurns = classifiedTurns.filter(t => t.classification?.usesOnlyAuditoryChannel).length;
+    const aut = safeDivide(auditoryOnlyTurns, totalTurns);
+
+    // [IN] Initiative
+    const newInfoTurns = classifiedTurns.filter(t => (isVT(t) || isGT(t)) && t.classification?.childProvidesNewInfo).length;
+    const in_ = safeDivide(newInfoTurns, vtOrGtCount);
+
+    // [EC-PRES] Presence of Eye Contact
+    const eyeContactTurns = turns.filter(t => t.eyeContact).length;
+    const ecPres = safeDivide(eyeContactTurns, totalTurns);
+
+    // [EC-AD] Adequacy of Eye Contact
+    const adequateEyeContactTurns = classifiedTurns.filter(t => t.classification?.isEyeContactAdequate).length;
+    const ecAd = safeDivide(adequateEyeContactTurns, totalTurns);
+    
+    // Parental Communication Style
+    const styleCounts = { TUTORIAL: 0, DIDACTIC: 0, DIRECTIVE: 0, CONVERSATIONAL: 0 };
+    const styleMap = { 'T': 'TUTORIAL', 'D': 'DIDACTIC', 'DC': 'DIRECTIVE', 'C': 'CONVERSATIONAL' };
+    let totalStyleOccurrences = 0;
+
+    classifiedTurns.forEach(turn => {
+        const strategies = turn.classification.parentCommunication;
+        Object.keys(strategies).forEach(strategyId => {
+            if (strategies[strategyId]) {
+                const styleCodes = PARENT_COMM_STYLES[strategyId];
+                if (styleCodes) {
+                    styleCodes.forEach(code => {
+                        const styleKey = styleMap[code];
+                        if (styleKey) {
+                            styleCounts[styleKey]++;
+                            totalStyleOccurrences++;
+                        }
+                    });
+                }
+            }
+        });
+    });
+
+    const stylePercentages = {
+        TUTORIAL: safeDivide(styleCounts.TUTORIAL, totalStyleOccurrences) * 100,
+        DIDACTIC: safeDivide(styleCounts.DIDACTIC, totalStyleOccurrences) * 100,
+        DIRECTIVE: safeDivide(styleCounts.DIRECTIVE, totalStyleOccurrences) * 100,
+        CONVERSATIONAL: safeDivide(styleCounts.CONVERSATIONAL, totalStyleOccurrences) * 100,
+    };
+
+    let predominantStyle = 'No Specific Style';
+    const sortedStyles = Object.entries(stylePercentages).sort(([,a],[,b]) => b-a);
+    if (totalStyleOccurrences > 0) {
+        if(sortedStyles[0][1] >= 40) {
+            predominantStyle = sortedStyles[0][0];
+        } else if (sortedStyles[0][1] >= 25 && sortedStyles.length > 1 && sortedStyles[1][1] > 0) {
+            predominantStyle = `${sortedStyles[0][0]} & ${sortedStyles[1][0]}`;
+        } else if (sortedStyles[0][1] >= 25) {
+             predominantStyle = sortedStyles[0][0];
+        }
+    }
+
+    return {
+        communicativeMode,
+        predominantVocalization,
+        ttCons,
+        ttAd,
+        aut,
+        in: in_,
+        ecPres,
+        ecAd,
+        parentalStyle: {
+            percentages: stylePercentages,
+            predominantStyle: predominantStyle,
+        },
+    };
+};
+
+// From components/CommandPanel.tsx
+const LabeledTextarea = ({ label, value, onChange, name, disabled }) => (
+    <div>
+        <label htmlFor={name} className="block text-sm font-medium text-slate-300 mb-1">{label}</label>
+        <textarea
+            id={name}
+            name={name}
+            value={value}
+            onChange={onChange}
+            rows={2}
+            className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-slate-800 transition disabled:opacity-50"
+            disabled={disabled}
+        />
+    </div>
+);
+
+const TurnInputForm = ({ onSubmit, disabled }) => {
+    const { useState } = React;
+    const initialState = {
+        parentAction: '',
+        parentSpeech: '',
+        childSpeech: '',
+        childAction: '',
+        eyeContact: false,
+        overlappingDialogue: false,
+    };
+    const [formData, setFormData] = useState(initialState);
+
+    const handleChange = (e) => {
+        const { name, value, type, checked } = e.target;
+        setFormData(prev => ({
+            ...prev,
+            [name]: type === 'checkbox' ? checked : value
+        }));
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onSubmit(formData);
+        setFormData(initialState);
+    };
+
+    return (
+        <div className="bg-gradient-to-br from-slate-800 to-slate-900/50 rounded-lg p-4 h-full border border-slate-700 flex flex-col">
+            <h2 className="text-xl font-semibold mb-4 text-slate-300">Registra Turno</h2>
+            <form onSubmit={handleSubmit} className="flex flex-col gap-3 flex-grow">
+                <LabeledTextarea label="What the parent is doing" name="parentAction" value={formData.parentAction} onChange={handleChange} disabled={disabled} />
+                <LabeledTextarea label="What the parent is saying" name="parentSpeech" value={formData.parentSpeech} onChange={handleChange} disabled={disabled} />
+                <LabeledTextarea label="What the child is saying" name="childSpeech" value={formData.childSpeech} onChange={handleChange} disabled={disabled} />
+                <LabeledTextarea label="What the child is doing" name="childAction" value={formData.childAction} onChange={handleChange} disabled={disabled} />
+                
+                <div className="flex items-center justify-between mt-2">
+                     <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" name="eyeContact" checked={formData.eyeContact} onChange={handleChange} disabled={disabled} className="form-checkbox bg-slate-600 border-slate-500 text-cyan-500 focus:ring-cyan-500 disabled:opacity-50" />
+                        <span className="text-slate-300">Eye contact</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" name="overlappingDialogue" checked={formData.overlappingDialogue} onChange={handleChange} disabled={disabled} className="form-checkbox bg-slate-600 border-slate-500 text-cyan-500 focus:ring-cyan-500 disabled:opacity-50" />
+                        <span className="text-slate-300">Overlapping of the dialogue</span>
+                    </label>
+                </div>
+                
+                <button
+                    type="submit"
+                    className="w-full mt-auto bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300 disabled:bg-slate-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-slate-800"
+                    disabled={disabled}
+                >
+                    Submit Turn & Classify
+                </button>
+            </form>
+        </div>
+    );
+};
+
+// From components/PlayByPlayLog.tsx
+const DetailItem = ({ label, value, children }) => (
+    <div className="py-2">
+        <p className="text-sm text-slate-400">{label}</p>
+        {children ? <div className="text-slate-200 text-sm">{children}</div> : <p className="text-slate-200 text-sm">{typeof value === 'boolean' ? (value ? 'Yes' : 'No') : (value || 'N/A')}</p>}
+    </div>
+);
+
+const TrashIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    </svg>
+);
+
+const TurnDetails = ({ turn }) => {
+    const c = turn.classification;
+    if (!c) return null;
+
+    const parentStrategies = PARENT_COMM_STRATEGIES
+        .filter(s => c.parentCommunication[s.id])
+        .map(s => s.label);
+
+    return (
+        <div className="bg-slate-800/50 p-4 mt-2 rounded-b-lg">
+            <h4 className="font-semibold text-cyan-400 mb-2">Descrizione Turno</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-4">
+                <DetailItem label="Parent Action" value={turn.parentAction} />
+                <DetailItem label="Parent Speech" value={turn.parentSpeech} />
+                <DetailItem label="Child Action" value={turn.childAction} />
+                <DetailItem label="Child Speech" value={turn.childSpeech} />
+                <DetailItem label="Eye Contact" value={turn.eyeContact} />
+                <DetailItem label="Overlapping Dialogue" value={turn.overlappingDialogue} />
+            </div>
+             <h4 className="font-semibold text-cyan-400 mt-4 mb-2 pt-2 border-t border-slate-700">Classificazione</h4>
+             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-4">
+                <DetailItem label="Communication Mode" value={c.communicationMode} />
+                <DetailItem label="Vocalization Type" value={c.vocalizationType} />
+                <DetailItem label="Shared Attention" value={c.sharedAttention} />
+                <DetailItem label="Turn Inadequate" value={c.isInadequate} />
+                <DetailItem label="Child Provides New Info" value={c.childProvidesNewInfo} />
+                <DetailItem label="Child Understands Semantic" value={c.childUnderstandsSemantic} />
+                <DetailItem label="Uses Auditory Channel Only" value={c.usesOnlyAuditoryChannel} />
+                <DetailItem label="Adequate Eye Contact" value={c.isEyeContactAdequate} />
+             </div>
+             <DetailItem label="Parent Communication Strategies">
+                {parentStrategies.length > 0 ? (
+                    <ul className="list-disc list-inside text-sm">
+                        {parentStrategies.map(s => <li key={s}>{s}</li>)}
+                    </ul>
+                ) : "N/A"}
+             </DetailItem>
+        </div>
+    )
+};
+
+const TurnLog = ({ turns, onExport, onCalculateStats, isExportDisabled, onDeleteTurn, onExportSession }) => {
+    const formatTime = (seconds) => {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return `${mins.toString().padStart(2, '0')}:${secs.toFixed(2).padStart(5, '0')}`;
+    };
+    return (
+        <div className="bg-gradient-to-br from-slate-800 to-slate-900/50 rounded-lg p-4 border border-slate-700">
+            <div className="flex justify-between items-center mb-4 flex-wrap gap-4">
+                <h2 className="text-xl font-semibold text-slate-300">Log dei Turni</h2>
+                <div className="flex gap-4">
+                    <button 
+                        onClick={onCalculateStats}
+                        disabled={isExportDisabled}
+                        className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 disabled:bg-slate-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-slate-800">
+                        Calcola Statistiche
+                    </button>
+                     <button 
+                        onClick={onExportSession}
+                        disabled={isExportDisabled}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 disabled:bg-slate-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800">
+                        Salva Sessione
+                    </button>
+                    <button 
+                        onClick={onExport}
+                        disabled={isExportDisabled}
+                        className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 disabled:bg-slate-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-slate-800">
+                        Esporta in TXT
+                    </button>
+                </div>
+            </div>
+            <div className="max-h-96 overflow-y-auto space-y-2 pr-2">
+                {turns.length === 0 ? (
+                     <p className="text-slate-400 text-center py-8">Nessun turno registrato.</p>
+                ) : (
+                    turns.map((turn, index) => (
+                        <details key={turn.id} className="bg-slate-700/50 rounded-lg">
+                            <summary className="p-3 cursor-pointer hover:bg-slate-700 rounded-t-lg list-none flex justify-between items-center">
+                                <div>
+                                    <span className="font-bold">Turno {index + 1}</span>
+                                    <span className="font-mono text-cyan-400 ml-4">{formatTime(turn.timestamp)}</span>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    <span className="text-xs text-slate-400">Dettagli</span>
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); onDeleteTurn(turn.id); }} 
+                                        className="text-red-400 hover:text-red-300 p-1 rounded-full hover:bg-red-500/20 transition-colors"
+                                        aria-label={`Delete turn ${index + 1}`}
+                                    >
+                                        <TrashIcon />
+                                    </button>
+                                </div>
+                            </summary>
+                            <TurnDetails turn={turn} />
+                        </details>
+                    ))
+                )}
+            </div>
+        </div>
+    );
+};
+
+// From components/StatisticsModal.tsx
+const StatCard = ({ title, value, description }) => (
+    <div className="bg-slate-700/50 p-4 rounded-lg">
+        <h4 className="text-sm font-semibold text-cyan-400 uppercase tracking-wider">{title}</h4>
+        <p className="text-3xl font-bold text-white my-1">{value}</p>
+        <p className="text-xs text-slate-400">{description}</p>
+    </div>
+);
+
+const StyleBar = ({ label, percentage }) => (
+    <div className="w-full">
+        <div className="flex justify-between mb-1">
+            <span className="text-sm font-medium text-slate-300">{label}</span>
+            <span className="text-sm font-medium text-slate-300">{percentage.toFixed(1)}%</span>
+        </div>
+        <div className="w-full bg-slate-600 rounded-full h-2.5">
+            <div className="bg-purple-500 h-2.5 rounded-full" style={{ width: `${percentage}%` }}></div>
+        </div>
+    </div>
+);
+
+const StatisticsModal = ({ isOpen, onClose, stats, onExportStats }) => {
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4" aria-modal="true" role="dialog">
+            <div className="bg-slate-800 border border-slate-700 rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+                <header className="p-4 border-b border-slate-700 flex justify-between items-center">
+                    <h2 className="text-xl font-bold text-white">Interaction Statistics</h2>
+                    <button onClick={onClose} className="text-slate-400 hover:text-white text-3xl leading-none">&times;</button>
+                </header>
+                <div className="p-6 overflow-y-auto">
+                    {!stats ? (
+                         <p className="text-slate-400 text-center py-8">Not enough data to calculate statistics.</p>
+                    ) : (
+                        <div className="space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                <StatCard title="TT-CONS" value={stats.ttCons.toFixed(2)} description="Consistency of Turn-Taking" />
+                                <StatCard title="TT-AD" value={stats.ttAd.toFixed(2)} description="Adequacy of Turn-Taking" />
+                                <StatCard title="EC-PRES" value={stats.ecPres.toFixed(2)} description="Presence of Eye Contact" />
+                                <StatCard title="EC-AD" value={stats.ecAd.toFixed(2)} description="Adequacy of Eye Contact" />
+                                <StatCard title="AUT" value={stats.aut.toFixed(2)} description="Auditory Autonomy" />
+                                <StatCard title="IN" value={stats.in.toFixed(2)} description="Initiative" />
+                            </div>
+                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                <div className="bg-slate-700/50 p-4 rounded-lg">
+                                    <h3 className="text-lg font-semibold text-cyan-400 mb-3">Communicative Profile</h3>
+                                    <StatCard title="COMMUNICATIVE MODE" value={stats.communicativeMode} description="Child's predominant communication mode" />
+                                    <div className="mt-4">
+                                        <StatCard title="VOCALIZATION TYPE" value={stats.predominantVocalization} description="Child's most frequent vocalization" />
+                                    </div>
+                                </div>
+                                <div className="bg-slate-700/50 p-4 rounded-lg">
+                                    <h3 className="text-lg font-semibold text-cyan-400 mb-3">Parental Communication Style</h3>
+                                    <div className="space-y-3 mb-4">
+                                        <StyleBar label="Tutorial" percentage={stats.parentalStyle.percentages.TUTORIAL} />
+                                        <StyleBar label="Didactic" percentage={stats.parentalStyle.percentages.DIDACTIC} />
+                                        <StyleBar label="Directive" percentage={stats.parentalStyle.percentages.DIRECTIVE} />
+                                        <StyleBar label="Conversational" percentage={stats.parentalStyle.percentages.CONVERSATIONAL} />
+                                    </div>
+                                    <StatCard title="PREDOMINANT STYLE" value={stats.parentalStyle.predominantStyle} description="Based on interaction patterns" />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+                 <footer className="p-4 border-t border-slate-700 mt-auto flex justify-end gap-4">
+                    <button 
+                        type="button" 
+                        onClick={onExportStats}
+                        disabled={!stats}
+                        className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition-colors duration-300 disabled:bg-slate-600 disabled:cursor-not-allowed">
+                        Esporta Statistiche
+                    </button>
+                    <button type="button" onClick={onClose} className="bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-6 rounded-lg transition-colors duration-300">
+                        Chiudi
+                    </button>
+                </footer>
+            </div>
+        </div>
+    );
+};
+
+// From components/TranscriptionPanel.tsx
+const Section = ({ title, children, className }) => (
+    <div className={`mb-4 ${className}`}>
+        <h3 className="text-md font-semibold text-cyan-300 border-b border-slate-600 pb-2 mb-3">{title}</h3>
+        {children}
+    </div>
+);
+
+const RadioGroup = ({ name, options, selected, onChange }) => (
+     <div className="flex flex-wrap gap-x-4 gap-y-2">
+        {options.map(opt => (
+            <label key={opt} className="flex items-center space-x-2 text-slate-300 cursor-pointer text-sm">
+                <input type="radio" name={name} value={opt} checked={selected === opt} onChange={onChange} className="form-radio bg-slate-600 border-slate-500 text-cyan-500 focus:ring-cyan-500" />
+                <span>{opt}</span>
+            </label>
+        ))}
+    </div>
+);
+
+const Checkbox = ({ name, checked, onChange, children }) => (
+    <label className="flex items-center space-x-2 text-slate-300 cursor-pointer">
+        <input type="checkbox" name={name} checked={checked} onChange={onChange} className="form-checkbox bg-slate-600 border-slate-500 text-cyan-500 focus:ring-cyan-500" />
+        <span>{children}</span>
+    </label>
+);
+
+const ClassificationPanel = ({ onSave, onClose }) => {
+    const { useState } = React;
+    const initialParentComm = PARENT_COMM_STRATEGIES.reduce((acc, curr) => ({...acc, [curr.id]: false }), {});
+    const initialState = {
+        communicationMode: '',
+        vocalizationType: '',
+        sharedAttention: '',
+        parentCommunication: initialParentComm,
+        isInadequate: false,
+        childProvidesNewInfo: false,
+        childUnderstandsSemantic: '',
+        usesOnlyAuditoryChannel: false,
+        isEyeContactAdequate: false,
+    };
+    const [formData, setFormData] = useState(initialState);
+
+    const handleRadioChange = (e) => {
+        setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    };
+
+    const handleCheckboxChange = (e) => {
+        setFormData(prev => ({ ...prev, [e.target.name]: e.target.checked }));
+    };
+
+    const handleParentCommChange = (e) => {
+        const { name, checked } = e.target;
+        setFormData(prev => ({
+            ...prev,
+            parentCommunication: {
+                ...prev.parentCommunication,
+                [name]: checked,
+            },
+        }));
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onSave(formData);
+    };
+
+    return (
+        <div className="bg-gradient-to-br from-slate-800 to-slate-900/50 rounded-lg p-4 h-full border border-cyan-500/50 flex flex-col">
+            <header className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold text-white">Classifica Turno</h2>
+                <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl leading-none">&times;</button>
+            </header>
+            <form onSubmit={handleSubmit} className="flex-grow overflow-y-auto pr-2">
+                <Section title="1. Communication Mode">
+                   <RadioGroup name="communicationMode" options={COMM_MODES} selected={formData.communicationMode} onChange={handleRadioChange} />
+                </Section>
+                <Section title="2. Vocalization Type">
+                     <RadioGroup name="vocalizationType" options={VOCALIZATION_TYPES} selected={formData.vocalizationType} onChange={handleRadioChange} />
+                </Section>
+                <Section title="3. Shared Attention">
+                     <RadioGroup name="sharedAttention" options={SHARED_ATTENTION_OPTS} selected={formData.sharedAttention} onChange={handleRadioChange} />
+                </Section>
+                 <Section title="4. Parent Communication">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                        {PARENT_COMM_STRATEGIES.map(item => (
+                            <label key={item.id} className="flex items-start space-x-2 text-slate-300 cursor-pointer">
+                                <input type="checkbox" name={item.id} checked={formData.parentCommunication[item.id]} onChange={handleParentCommChange} className="form-checkbox mt-1 bg-slate-600 border-slate-500 text-cyan-500 focus:ring-cyan-500" />
+                                <span>{item.label}</span>
+                            </label>
+                        ))}
+                    </div>
+                </Section>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <Section title="5. Is turn inadequate?">
+                           <Checkbox name="isInadequate" checked={formData.isInadequate} onChange={handleCheckboxChange}>Check if observed</Checkbox>
+                        </Section>
+                         <Section title="6. Child providing new info?">
+                           <Checkbox name="childProvidesNewInfo" checked={formData.childProvidesNewInfo} onChange={handleCheckboxChange}>Yes</Checkbox>
+                        </Section>
+                        <Section title="7. Il bambino comprende il referente semantico?">
+                            <RadioGroup name="childUnderstandsSemantic" options={SEMANTIC_OPTS} selected={formData.childUnderstandsSemantic} onChange={handleRadioChange} />
+                        </Section>
+                    </div>
+                    <div>
+                        <Section title="8. Utilizza solo il canale uditivo?">
+                           <Checkbox name="usesOnlyAuditoryChannel" checked={formData.usesOnlyAuditoryChannel} onChange={handleCheckboxChange}>Seleziona se osservato</Checkbox>
+                        </Section>
+                        <Section title="9. Il contatto oculare è adeguato?">
+                           <Checkbox name="isEyeContactAdequate" checked={formData.isEyeContactAdequate} onChange={handleCheckboxChange}>Check if observed</Checkbox>
+                        </Section>
+                    </div>
+                </div>
+            </form>
+             <footer className="pt-4 mt-auto">
+                <button type="button" onClick={handleSubmit} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-6 rounded-lg transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-slate-800">
+                    Salva Classificazione
+                </button>
+            </footer>
+        </div>
+    );
+};
+
+// From components/VideoPlayer.tsx
+const VideoPlayer = ({ videoUrl, onFileChange, onTimeUpdate, videoRef, onImportSession }) => {
+    const handleFileChange = (event) => {
+        if (event.target.files && event.target.files[0]) {
+            onFileChange(event.target.files[0]);
+        }
+    };
+
+    const handleSessionFileChange = (event) => {
+        if (event.target.files && event.target.files[0]) {
+            onImportSession(event.target.files[0]);
+        }
+    };
+
+    return (
+        <div className="bg-gradient-to-br from-slate-800 to-slate-900/50 rounded-lg p-4 flex flex-col items-center justify-center h-[500px] border border-slate-700">
+            {!videoUrl ? (
+                <div className="text-center">
+                    <h2 className="text-xl font-semibold mb-4 text-slate-300">Carica un Video</h2>
+                     <label htmlFor="video-upload" className="cursor-pointer bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300">
+                        Seleziona File Video
+                    </label>
+                    <input
+                        id="video-upload"
+                        type="file"
+                        accept="video/*"
+                        onChange={handleFileChange}
+                        className="hidden"
+                    />
+                    <div className="mt-6 text-sm text-slate-400">
+                        <p>Oppure</p>
+                         <label htmlFor="session-upload" className="cursor-pointer text-cyan-400 hover:text-cyan-300 hover:underline transition">
+                            importa una sessione di analisi (.json)
+                        </label>
+                        <input
+                            id="session-upload"
+                            type="file"
+                            accept=".json"
+                            onChange={handleSessionFileChange}
+                            className="hidden"
+                        />
+                    </div>
+                </div>
+            ) : (
+                <video
+                    ref={videoRef}
+                    src={videoUrl}
+                    controls
+                    className="w-full h-full object-contain rounded-md"
+                    onTimeUpdate={(e) => onTimeUpdate(e.currentTarget.currentTime)}
+                />
+            )}
+        </div>
+    );
+};
+
+// From App.tsx
+const { useState, useRef, useCallback, useMemo } = React;
+
+const App = () => {
+    const [videoFile, setVideoFile] = useState(null);
+    const [videoUrl, setVideoUrl] = useState(null);
+    const [currentTime, setCurrentTime] = useState(0);
+    const [turns, setTurns] = useState([]);
+    const [isClassifying, setIsClassifying] = useState(false);
+    const [turnToClassify, setTurnToClassify] = useState(null);
+    const [isStatsOpen, setIsStatsOpen] = useState(false);
+
+    const videoRef = useRef(null);
+
+    const stats = useMemo(() => {
+        if (turns.length > 0) {
+            return calculateStatistics(turns);
+        }
+        return null;
+    }, [turns]);
+
+    const handleFileChange = (file) => {
+        if (file) {
+            setVideoFile(file);
+            const url = URL.createObjectURL(file);
+            setVideoUrl(url);
+            if (turns.length === 0) {
+                setCurrentTime(0);
+                setIsClassifying(false);
+                setTurnToClassify(null);
+                setIsStatsOpen(false);
+            }
+        }
+    };
+
+    const handleTimeUpdate = (time) => {
+        setCurrentTime(time);
+    };
+
+    const handleSubmitTurn = useCallback((data) => {
+        if (!videoFile) {
+            alert("Per favore, carica un video prima di registrare un turno.");
+            return;
+        }
+        const newTurn = {
+            ...data,
+            id: Date.now(),
+            timestamp: currentTime,
+            classification: null,
+        };
+        setTurnToClassify(newTurn);
+        setIsClassifying(true);
+        if (videoRef.current) videoRef.current.pause();
+    }, [currentTime, videoFile]);
+
+    const handleSaveClassification = (classification) => {
+        if (!turnToClassify) return;
+        const classifiedTurn = { ...turnToClassify, classification };
+        setTurns(prevTurns => [...prevTurns, classifiedTurn].sort((a,b) => a.timestamp - b.timestamp));
+        setIsClassifying(false);
+        setTurnToClassify(null);
+    };
+
+    const handleCloseClassification = () => {
+        setIsClassifying(false);
+        setTurnToClassify(null);
+    }
+
+    const handleDeleteTurn = (id) => {
+        if (window.confirm('Sei sicuro di voler cancellare questo turno?')) {
+            setTurns(prevTurns => prevTurns.filter(turn => turn.id !== id));
+        }
+    };
+
+    const handleExport = () => {
+        if (turns.length === 0) {
+            alert("Nessun dato da esportare.");
+            return;
+        }
+        exportToTxt(turns, `analisi_comunicazione_${videoFile?.name.split('.')[0] || 'export'}_${new Date().toISOString().split('T')[0]}.txt`);
+    };
+
+    const handleExportStats = () => {
+        if (!stats) {
+            alert("Nessuna statistica da esportare.");
+            return;
+        }
+        exportStatsToTxt(stats, `statistiche_${videoFile?.name.split('.')[0] || 'export'}_${new Date().toISOString().split('T')[0]}.txt`);
+    };
+    
+    const handleExportSession = () => {
+         if (turns.length === 0) {
+            alert("Nessuna sessione da salvare.");
+            return;
+        }
+        const sessionData = {
+            videoFilename: videoFile?.name || 'unknown_video',
+            analysisDate: new Date().toISOString(),
+            turns: turns
+        };
+        const blob = new Blob([JSON.stringify(sessionData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `sessione_${videoFile?.name.split('.')[0] || 'export'}_${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
+
+    const handleImportSession = (file) => {
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const text = e.target?.result;
+                if (typeof text !== 'string') throw new Error("Il file non è un testo valido.");
+                const data = JSON.parse(text);
+                if (!data.videoFilename || !Array.isArray(data.turns)) {
+                    throw new Error("Formato del file di sessione non valido.");
+                }
+                setTurns(data.turns);
+                alert(`Sessione per il video "${data.videoFilename}" caricata con successo.\n\nAssicurati di caricare il file video corretto per continuare l'analisi.`);
+            } catch (error) {
+                console.error("Errore nell'importazione della sessione:", error);
+                alert(`Errore durante l'importazione del file di sessione: ${error.message}`);
+            }
+        };
+        reader.readAsText(file);
+    };
+
+    const isInputDisabled = !videoFile || isClassifying;
+
+    return (
+        <div className="min-h-screen bg-slate-900 text-gray-200 font-sans">
+            <div className="max-w-screen-xl mx-auto p-4 sm:p-6 lg:p-8 relative">
+                <header className="text-center mb-8 pb-4 border-b border-slate-700/50">
+                    <h1 className="text-4xl lg:text-5xl font-bold text-cyan-400 tracking-tight">Analizzatore di Turni Comunicativi</h1>
+                    <p className="text-slate-400 mt-2 text-lg">Carica un video, descrivi i turni di comunicazione e classificali.</p>
+                </header>
+                <div className="absolute top-8 right-8 bg-slate-800 border border-cyan-500/50 text-cyan-300 rounded-lg px-4 py-2 text-center">
+                    <div className="text-3xl font-bold">{turns.length}</div>
+                    <div className="text-sm uppercase tracking-wider">Turni Registrati</div>
+                </div>
+                <main className="flex flex-col gap-8">
+                    <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                        <div className="lg:col-span-3">
+                            <VideoPlayer 
+                                videoUrl={videoUrl} 
+                                onFileChange={handleFileChange} 
+                                onTimeUpdate={handleTimeUpdate} 
+                                videoRef={videoRef}
+                                onImportSession={handleImportSession}
+                            />
+                        </div>
+                        <div className="lg:col-span-2 h-[500px]">
+                           {isClassifying ? (
+                               <ClassificationPanel onSave={handleSaveClassification} onClose={handleCloseClassification} />
+                           ) : (
+                               <TurnInputForm onSubmit={handleSubmitTurn} disabled={isInputDisabled} />
+                           )}
+                        </div>
+                    </div>
+                    <div style={{ filter: isClassifying ? 'blur(2px)' : 'none', transition: 'filter 0.3s' }}>
+                        <TurnLog 
+                            turns={turns} 
+                            onExport={handleExport} 
+                            isExportDisabled={turns.length === 0}
+                            onCalculateStats={() => setIsStatsOpen(true)}
+                            onDeleteTurn={handleDeleteTurn}
+                            onExportSession={handleExportSession}
+                        />
+                    </div>
+                </main>
+                <StatisticsModal 
+                    isOpen={isStatsOpen}
+                    onClose={() => setIsStatsOpen(false)}
+                    stats={stats}
+                    onExportStats={handleExportStats}
+                />
+            </div>
+        </div>
+    );
+};
+
+
+// From index.tsx
+const rootElement = document.getElementById('root');
+if (!rootElement) {
+  throw new Error("Could not find root element to mount to");
+}
+const root = ReactDOM.createRoot(rootElement);
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+    </script>
   </body>
 </html>
