@@ -23,7 +23,8 @@
         background: #64748b; /* slate-500 */
       }
     </style>
-  </head>
+  <link rel="stylesheet" href="/index.css">
+</head>
   <body class="bg-slate-900 text-white">
     <div id="root"></div>
 
@@ -31,6 +32,7 @@
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 
     <!-- Consolidated Application Code -->
     <script type="text/babel">
@@ -90,12 +92,12 @@ const PARENT_COMM_STYLES = {
     empathic: ['C'],
     topicChange: ['C'],
     selfReformulate: ['C'],
-    intrusion: [], // Not specified
-    missVocal: [], // Not specified
-    missTurn: [], // Not specified
-    unknownWords: [], // Not specified
-    selfReformulate2: ['C'], // Assuming same as 'selfReformulate'
-    intrusion2: [], // Not specified
+    intrusion: [],
+    missVocal: [],
+    missTurn: [],
+    unknownWords: [],
+    selfReformulate2: ['C'],
+    intrusion2: [],
 };
 
 // From utils/exportUtils.ts
@@ -115,6 +117,13 @@ const formatTurnForTxt = (turn, index) => {
     content += `Child Speech: ${turn.childSpeech || 'N/A'}\n`;
     content += `Eye Contact Present: ${turn.eyeContact ? 'Yes' : 'No'}\n`;
     content += `Overlapping Dialogue: ${turn.overlappingDialogue ? 'Yes' : 'No'}\n`;
+    if (turn.hasOwnProperty('focusAttentivoNuovo')) {
+        content += `Focus Attentivo Nuovo: ${turn.focusAttentivoNuovo ? 'Yes' : 'No'}\n`;
+        if (turn.focusAttentivoNuovo) {
+            content += `  - Focus Comune: ${turn.focusComune ? 'Yes' : 'No'}\n`;
+            content += `  - Focus Non Comune: ${turn.focusNonComune ? 'Yes' : 'No'}\n`;
+        }
+    }
     content += `\n`;
 
     if (turn.classification) {
@@ -123,12 +132,17 @@ const formatTurnForTxt = (turn, index) => {
         content += `1. Communication Mode: ${c.communicationMode || 'N/A'}\n`;
         content += `2. Vocalization Type: ${c.vocalizationType || 'N/A'}\n`;
         content += `3. Shared Attention: ${c.sharedAttention || 'N/A'}\n`;
+        content += `4. Is the turn inadequate?: ${c.isInadequate ? 'Yes' : 'No'}\n`;
+        content += `5. Is the child providing new information?: ${c.childProvidesNewInfo ? 'Yes' : 'No'}\n`;
+        content += `6. Il bambino comprende il referente semantico?: ${c.childUnderstandsSemantic || 'N/A'}\n`;
+        content += `7. Uses only auditory channel?: ${c.usesOnlyAuditoryChannel ? 'Yes' : 'No'}\n`;
+        content += `8. Is eye contact adequate?: ${c.isEyeContactAdequate ? 'Yes' : 'No'}\n\n`;
         
         const strategies = PARENT_COMM_STRATEGIES
             .filter(s => c.parentCommunication[s.id])
             .map(s => s.label);
         
-        content += `4. Parent Communication:\n`;
+        content += `9. Parent Communication:\n`;
         if (strategies.length > 0) {
             strategies.forEach(s => {
                 content += `   - ${s}\n`;
@@ -136,12 +150,6 @@ const formatTurnForTxt = (turn, index) => {
         } else {
             content += `   - None\n`;
         }
-
-        content += `5. Is the turn inadequate?: ${c.isInadequate ? 'Yes' : 'No'}\n`;
-        content += `6. Is the child providing new information?: ${c.childProvidesNewInfo ? 'Yes' : 'No'}\n`;
-        content += `7. Il bambino comprende il referente semantico?: ${c.childUnderstandsSemantic || 'N/A'}\n`;
-        content += `8. Uses only auditory channel?: ${c.usesOnlyAuditoryChannel ? 'Yes' : 'No'}\n`;
-        content += `9. Is eye contact adequate?: ${c.isEyeContactAdequate ? 'Yes' : 'No'}\n`;
     } else {
         content += `[CLASSIFICAZIONE NON COMPLETATA]\n`;
     }
@@ -170,17 +178,20 @@ const exportStatsToTxt = (stats, filename) => {
     let content = `--- STATISTICHE DI INTERAZIONE ---\n\n`;
     content += `Data Esportazione: ${new Date().toLocaleString()}\n\n`;
 
-    content += `--- PROFILO COMUNICATIVO ---\n`;
-    content += `Modalità Comunicativa Predominante: ${stats.communicativeMode}\n`;
-    content += `Tipo di Vocalizzazione Predominante: ${stats.predominantVocalization}\n\n`;
-
     content += `--- METRICHE CHIAVE ---\n`;
+    content += `Indice di Efficacia Comunicativa (CEI): ${stats.cei.toFixed(2)}\n\n`;
     content += `Consistenza del Turno (TT-CONS): ${stats.ttCons.toFixed(2)}\n`;
     content += `Adeguatezza del Turno (TT-AD): ${stats.ttAd.toFixed(2)}\n`;
     content += `Presenza Contatto Visivo (EC-PRES): ${stats.ecPres.toFixed(2)}\n`;
     content += `Adeguatezza Contatto Visivo (EC-AD): ${stats.ecAd.toFixed(2)}\n`;
+    content += `Dipendenza dal Contatto Visivo (EC-DEP): ${stats.ecDep.toFixed(2)}\n`;
+    content += `Attenzione Congiunta (JA): ${stats.ja.toFixed(2)}\n`;
     content += `Autonomia Uditiva (AUT): ${stats.aut.toFixed(2)}\n`;
     content += `Iniziativa (IN): ${stats.in.toFixed(2)}\n\n`;
+    
+    content += `--- PROFILO COMUNICATIVO ---\n`;
+    content += `Modalità Comunicativa Predominante: ${stats.communicativeMode}\n`;
+    content += `Tipo di Vocalizzazione Predominante: ${stats.predominantVocalization}\n\n`;
     
     content += `--- STILE COMUNICATIVO GENITORIALE ---\n`;
     content += `Stile Predominante: ${stats.parentalStyle.predominantStyle}\n`;
@@ -211,7 +222,10 @@ const safeDivide = (numerator, denominator) => {
 
 const calculateStatistics = (turns) => {
     const totalTurns = turns.length;
+    if (totalTurns === 0) return null;
+    
     const classifiedTurns = turns.filter(t => t.classification);
+    const totalClassifiedTurns = classifiedTurns.length;
 
     const isVT = (turn) => turn.classification?.communicationMode === 'VERBAL (VT)';
     const isGT = (turn) => turn.classification?.communicationMode === 'GESTURAL (GT)';
@@ -221,7 +235,7 @@ const calculateStatistics = (turns) => {
     const vtOrGtCount = vtCount + gtCount;
 
     // Communicative Mode
-    const commModePercent = safeDivide(vtCount, totalTurns) * 100;
+    const commModePercent = safeDivide(vtCount, totalClassifiedTurns) * 100;
     let communicativeMode = '';
     if (commModePercent > 50) communicativeMode = 'Predominantly Verbal';
     else if (commModePercent >= 40) communicativeMode = 'Mixed to Predominantly Verbal';
@@ -239,15 +253,15 @@ const calculateStatistics = (turns) => {
     const predominantVocalization = vocalizations.length > 0 ? Object.keys(vocalizationCounts).reduce((a, b) => vocalizationCounts[a] > vocalizationCounts[b] ? a : b) : 'N/A';
 
     // [TT-CONS] Consistency of Turn-Taking
-    const ttCons = safeDivide(vtOrGtCount, totalTurns);
+    const ttCons = safeDivide(vtOrGtCount, totalClassifiedTurns);
 
     // [TT-AD] Adequacy of Turn-Taking
     const adequateTurns = classifiedTurns.filter(t => !t.classification?.isInadequate).length;
-    const ttAd = safeDivide(adequateTurns, totalTurns);
+    const ttAd = safeDivide(adequateTurns, totalClassifiedTurns);
 
     // [AUT] Auditory Autonomy
     const auditoryOnlyTurns = classifiedTurns.filter(t => t.classification?.usesOnlyAuditoryChannel).length;
-    const aut = safeDivide(auditoryOnlyTurns, totalTurns);
+    const aut = safeDivide(auditoryOnlyTurns, totalClassifiedTurns);
 
     // [IN] Initiative
     const newInfoTurns = classifiedTurns.filter(t => (isVT(t) || isGT(t)) && t.classification?.childProvidesNewInfo).length;
@@ -255,11 +269,21 @@ const calculateStatistics = (turns) => {
 
     // [EC-PRES] Presence of Eye Contact
     const eyeContactTurns = turns.filter(t => t.eyeContact).length;
-    const ecPres = safeDivide(eyeContactTurns, totalTurns);
+    const ecPres = safeDivide(eyeContactTurns, totalClassifiedTurns);
 
     // [EC-AD] Adequacy of Eye Contact
     const adequateEyeContactTurns = classifiedTurns.filter(t => t.classification?.isEyeContactAdequate).length;
-    const ecAd = safeDivide(adequateEyeContactTurns, totalTurns);
+    const ecAd = safeDivide(adequateEyeContactTurns, totalClassifiedTurns);
+
+    // [EC-DEP] Dependency on Eye Contact
+    const semanticYesCount = classifiedTurns.filter(t => t.classification?.childUnderstandsSemantic === 'SI').length;
+    const semanticNoCount = classifiedTurns.filter(t => t.classification?.childUnderstandsSemantic === 'NO').length;
+    const ecDep = safeDivide(semanticYesCount, semanticYesCount + semanticNoCount);
+    
+    // [JA] Joint Attention
+    const totalFocusEvents = turns.filter(t => t.focusAttentivoNuovo).length;
+    const commonFocusEvents = turns.filter(t => t.focusComune).length;
+    const ja = safeDivide(commonFocusEvents, totalFocusEvents);
     
     // Parental Communication Style
     const styleCounts = { TUTORIAL: 0, DIDACTIC: 0, DIRECTIVE: 0, CONVERSATIONAL: 0 };
@@ -303,6 +327,28 @@ const calculateStatistics = (turns) => {
         }
     }
 
+    // [CEI] Communication Efficacy Index
+    let cei = 0;
+    if (totalClassifiedTurns > 0) {
+        const TT_CONS_p = ttCons * 100;
+        const TT_AD_p = ttAd * 100;
+        const AUT_p = aut * 100;
+        const IN_p = in_ * 100;
+        const EC_DEP_p = ecDep * 100;
+
+        // STEP 1
+        const A = TT_CONS_p;
+        // STEP 2
+        const B = A - ((A * (1 - ttAd)) + (A * (1 - aut))) / 2;
+        // STEP 3
+        const C = B - (A * in_ / 2);
+        // STEP 4
+        const D = C * (1 - (ttCons * ecDep));
+        // STEP 5
+        cei = D * ja / 10;
+    }
+
+
     return {
         communicativeMode,
         predominantVocalization,
@@ -312,6 +358,9 @@ const calculateStatistics = (turns) => {
         in: in_,
         ecPres,
         ecAd,
+        ecDep,
+        ja,
+        cei,
         parentalStyle: {
             percentages: stylePercentages,
             predominantStyle: predominantStyle,
@@ -319,81 +368,25 @@ const calculateStatistics = (turns) => {
     };
 };
 
-// From components/CommandPanel.tsx
-const LabeledTextarea = ({ label, value, onChange, name, disabled }) => (
-    <div>
-        <label htmlFor={name} className="block text-sm font-medium text-slate-300 mb-1">{label}</label>
-        <textarea
-            id={name}
-            name={name}
-            value={value}
-            onChange={onChange}
-            rows={2}
-            className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-slate-800 transition disabled:opacity-50"
-            disabled={disabled}
-        />
-    </div>
+// --- ICONS ---
+const TrashIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    </svg>
+);
+const ModifyIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L14.732 3.732z" />
+    </svg>
+);
+const GroupIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+    </svg>
 );
 
-const TurnInputForm = ({ onSubmit, disabled }) => {
-    const { useState } = React;
-    const initialState = {
-        parentAction: '',
-        parentSpeech: '',
-        childSpeech: '',
-        childAction: '',
-        eyeContact: false,
-        overlappingDialogue: false,
-    };
-    const [formData, setFormData] = useState(initialState);
 
-    const handleChange = (e) => {
-        const { name, value, type, checked } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            [name]: type === 'checkbox' ? checked : value
-        }));
-    };
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        onSubmit(formData);
-        setFormData(initialState);
-    };
-
-    return (
-        <div className="bg-gradient-to-br from-slate-800 to-slate-900/50 rounded-lg p-4 h-full border border-slate-700 flex flex-col">
-            <h2 className="text-xl font-semibold mb-4 text-slate-300">Registra Turno</h2>
-            <form onSubmit={handleSubmit} className="flex flex-col gap-3 flex-grow">
-                <LabeledTextarea label="What the parent is doing" name="parentAction" value={formData.parentAction} onChange={handleChange} disabled={disabled} />
-                <LabeledTextarea label="What the parent is saying" name="parentSpeech" value={formData.parentSpeech} onChange={handleChange} disabled={disabled} />
-                <LabeledTextarea label="What the child is saying" name="childSpeech" value={formData.childSpeech} onChange={handleChange} disabled={disabled} />
-                <LabeledTextarea label="What the child is doing" name="childAction" value={formData.childAction} onChange={handleChange} disabled={disabled} />
-                
-                <div className="flex items-center justify-between mt-2">
-                     <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" name="eyeContact" checked={formData.eyeContact} onChange={handleChange} disabled={disabled} className="form-checkbox bg-slate-600 border-slate-500 text-cyan-500 focus:ring-cyan-500 disabled:opacity-50" />
-                        <span className="text-slate-300">Eye contact</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" name="overlappingDialogue" checked={formData.overlappingDialogue} onChange={handleChange} disabled={disabled} className="form-checkbox bg-slate-600 border-slate-500 text-cyan-500 focus:ring-cyan-500 disabled:opacity-50" />
-                        <span className="text-slate-300">Overlapping of the dialogue</span>
-                    </label>
-                </div>
-                
-                <button
-                    type="submit"
-                    className="w-full mt-auto bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300 disabled:bg-slate-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-slate-800"
-                    disabled={disabled}
-                >
-                    Submit Turn & Classify
-                </button>
-            </form>
-        </div>
-    );
-};
-
-// From components/PlayByPlayLog.tsx
+// --- SHARED UI COMPONENTS ---
 const DetailItem = ({ label, value, children }) => (
     <div className="py-2">
         <p className="text-sm text-slate-400">{label}</p>
@@ -401,12 +394,216 @@ const DetailItem = ({ label, value, children }) => (
     </div>
 );
 
-const TrashIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-    </svg>
+const LoggerInput = ({ label, value, onChange, onKeyDown, onAdd, disabled }) => (
+    <div>
+        <label className="block text-sm font-medium text-slate-300 mb-1">{label}</label>
+        <div className="flex gap-2">
+            <input
+                type="text"
+                value={value}
+                onChange={onChange}
+                onKeyDown={onKeyDown}
+                className="flex-grow bg-slate-700 border border-slate-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-slate-800 transition disabled:opacity-50"
+                disabled={disabled}
+            />
+            <button
+                type="button"
+                onClick={onAdd}
+                disabled={disabled || !value.trim()}
+                className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-3 rounded-md transition-colors duration-200 disabled:bg-slate-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-slate-800"
+            >
+                Add
+            </button>
+        </div>
+    </div>
+);
+const Checkbox = ({ name, checked, onChange, children, disabled }) => (
+    <label className={`flex items-center space-x-2 text-slate-300 text-sm ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
+        <input type="checkbox" name={name} checked={checked} onChange={onChange} disabled={disabled} className="form-checkbox bg-slate-600 border-slate-500 text-cyan-500 focus:ring-cyan-500" />
+        <span>{children}</span>
+    </label>
 );
 
+// --- LIVE LOGGER COMPONENT ---
+const LiveLogger = ({ onAddEvent, disabled }) => {
+    const { useState } = React;
+    const [parentAction, setParentAction] = useState('');
+    const [parentSpeech, setParentSpeech] = useState('');
+    const [childSpeech, setChildSpeech] = useState('');
+    const [childAction, setChildAction] = useState('');
+    
+    const [focusAttentivoNuovo, setFocusAttentivoNuovo] = useState(false);
+    const [focusComune, setFocusComune] = useState(false);
+    const [focusNonComune, setFocusNonComune] = useState(false);
+
+    const handleAdd = (track, content, setContent) => {
+        if (content.trim()) {
+            onAddEvent(track, content.trim());
+            setContent('');
+        }
+    };
+    
+    const handleKeyDown = (e, track, content, setContent) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleAdd(track, content, setContent);
+        }
+    };
+
+    const handleFocusCheckboxChange = (e) => {
+        const { name, checked } = e.target;
+        if (name === 'focusAttentivoNuovo') {
+            setFocusAttentivoNuovo(checked);
+            if (!checked) {
+                setFocusComune(false);
+                setFocusNonComune(false);
+            }
+        } else if (name === 'focusComune') {
+            setFocusComune(checked);
+            if (checked) setFocusNonComune(false);
+        } else if (name === 'focusNonComune') {
+            setFocusNonComune(checked);
+            if (checked) setFocusComune(false);
+        }
+    };
+
+    const handleAddFocusEvent = () => {
+        let content = '';
+        if (focusComune) content = 'Focus Comune';
+        else if (focusNonComune) content = 'Focus Non Comune';
+
+        if (content) {
+            onAddEvent('focus', content);
+            setFocusAttentivoNuovo(false);
+            setFocusComune(false);
+            setFocusNonComune(false);
+        }
+    };
+    
+    return (
+        <div className="bg-gradient-to-br from-slate-800 to-slate-900/50 rounded-lg p-4 h-full border border-slate-700 flex flex-col">
+            <h2 className="text-xl font-semibold mb-4 text-slate-300">Live Logging</h2>
+            <div className="mb-4 pb-4 border-b border-slate-700">
+                <div className="flex justify-between items-start">
+                    <div>
+                        <Checkbox name="focusAttentivoNuovo" checked={focusAttentivoNuovo} onChange={handleFocusCheckboxChange} disabled={disabled}>Focus attentivo nuovo</Checkbox>
+                        {focusAttentivoNuovo && (
+                            <div className="pl-6 pt-2 flex flex-col gap-2">
+                                <Checkbox name="focusComune" checked={focusComune} onChange={handleFocusCheckboxChange}>Focus Comune</Checkbox>
+                                <Checkbox name="focusNonComune" checked={focusNonComune} onChange={handleFocusCheckboxChange}>Focus Non Comune</Checkbox>
+                            </div>
+                        )}
+                    </div>
+                     <button
+                        type="button"
+                        onClick={handleAddFocusEvent}
+                        disabled={disabled || !focusAttentivoNuovo || (!focusComune && !focusNonComune)}
+                        className="bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 px-3 rounded-md transition-colors duration-200 disabled:bg-slate-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-slate-800"
+                    >
+                        Add Focus Event
+                    </button>
+                </div>
+            </div>
+            <div className="mb-4 pb-4 border-b border-slate-700">
+                <div className="flex justify-between items-center">
+                    <p className="text-slate-300">Contatto Visivo</p>
+                    <button
+                        type="button"
+                        onClick={() => onAddEvent('eyeContact', 'Contatto Visivo')}
+                        disabled={disabled}
+                        className="bg-pink-600 hover:bg-pink-700 text-white font-bold py-2 px-3 rounded-md transition-colors duration-200 disabled:bg-slate-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-pink-500 focus:ring-offset-2 focus:ring-offset-slate-800"
+                    >
+                        Registra Contatto Visivo
+                    </button>
+                </div>
+            </div>
+            <div className="flex flex-col gap-3 flex-grow justify-around">
+                <LoggerInput 
+                    label="What the parent is doing" 
+                    value={parentAction} 
+                    onChange={(e) => setParentAction(e.target.value)} 
+                    onKeyDown={(e) => handleKeyDown(e, 'parentAction', parentAction, setParentAction)}
+                    onAdd={() => handleAdd('parentAction', parentAction, setParentAction)} 
+                    disabled={disabled} 
+                />
+                <LoggerInput 
+                    label="What the parent is saying" 
+                    value={parentSpeech} 
+                    onChange={(e) => setParentSpeech(e.target.value)} 
+                    onKeyDown={(e) => handleKeyDown(e, 'parentSpeech', parentSpeech, setParentSpeech)}
+                    onAdd={() => handleAdd('parentSpeech', parentSpeech, setParentSpeech)} 
+                    disabled={disabled} 
+                />
+                <LoggerInput 
+                    label="What the child is saying" 
+                    value={childSpeech} 
+                    onChange={(e) => setChildSpeech(e.target.value)} 
+                    onKeyDown={(e) => handleKeyDown(e, 'childSpeech', childSpeech, setChildSpeech)}
+                    onAdd={() => handleAdd('childSpeech', childSpeech, setChildSpeech)} 
+                    disabled={disabled} 
+                />
+                <LoggerInput 
+                    label="What the child is doing" 
+                    value={childAction} 
+                    onChange={(e) => setChildAction(e.target.value)} 
+                    onKeyDown={(e) => handleKeyDown(e, 'childAction', childAction, setChildAction)}
+                    onAdd={() => handleAdd('childAction', childAction, setChildAction)}
+                    disabled={disabled} 
+                />
+            </div>
+        </div>
+    );
+};
+
+// --- VIDEO PLAYER COMPONENT ---
+const VideoPlayer = ({ videoUrl, onFileChange, onTimeUpdate, videoRef, onImportSession, onDurationChange }) => {
+    const handleFileChange = (event) => {
+        if (event.target.files && event.target.files[0]) {
+            onFileChange(event.target.files[0]);
+        }
+    };
+    const handleSessionFileChange = (event) => {
+        if (event.target.files && event.target.files[0]) {
+            onImportSession(event.target.files[0]);
+        }
+    };
+    return (
+        <div className="bg-gradient-to-br from-slate-800 to-slate-900/50 rounded-lg p-4 flex flex-col items-center justify-center h-[500px] border border-slate-700">
+            {!videoUrl ? (
+                <div className="text-center">
+                    <h2 className="text-xl font-semibold mb-4 text-slate-300">Carica un Video</h2>
+                     <label htmlFor="video-upload" className="cursor-pointer bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300">
+                        Seleziona File Video
+                    </label>
+                    <input id="video-upload" type="file" accept="video/*" onChange={handleFileChange} className="hidden" />
+                    <div className="mt-6 text-sm text-slate-400">
+                        <p>Oppure</p>
+                         <label htmlFor="session-upload" className="cursor-pointer text-cyan-400 hover:text-cyan-300 hover:underline transition">
+                            importa una sessione di analisi (.json)
+                        </label>
+                        <input id="session-upload" type="file" accept=".json" onChange={handleSessionFileChange} className="hidden" />
+                    </div>
+                </div>
+            ) : (
+                <video 
+                    ref={videoRef} 
+                    src={videoUrl} 
+                    controls 
+                    className="w-full h-full object-contain rounded-md" 
+                    onTimeUpdate={(e) => onTimeUpdate(e.currentTarget.currentTime)} 
+                    onLoadedMetadata={(e) => onDurationChange(e.currentTarget.duration)}
+                />
+            )}
+        </div>
+    );
+};
+
+// --- LOG PANEL COMPONENTS ---
+const formatTime = (seconds) => {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return `${mins.toString().padStart(2, '0')}:${secs.toFixed(2).padStart(5, '0')}`;
+};
 const TurnDetails = ({ turn }) => {
     const c = turn.classification;
     if (!c) return null;
@@ -425,6 +622,18 @@ const TurnDetails = ({ turn }) => {
                 <DetailItem label="Child Speech" value={turn.childSpeech} />
                 <DetailItem label="Eye Contact" value={turn.eyeContact} />
                 <DetailItem label="Overlapping Dialogue" value={turn.overlappingDialogue} />
+                {turn.hasOwnProperty('focusAttentivoNuovo') && (
+                    <div className="sm:col-span-2 md:col-span-3">
+                         <DetailItem label="Focus Attentivo Nuovo">
+                            {!turn.focusAttentivoNuovo ? 'No' : 
+                                [
+                                    turn.focusComune && 'Focus Comune',
+                                    turn.focusNonComune && 'Focus Non Comune'
+                                ].filter(Boolean).join(', ') || 'Nessun tipo selezionato'
+                            }
+                        </DetailItem>
+                    </div>
+                )}
             </div>
              <h4 className="font-semibold text-cyan-400 mt-4 mb-2 pt-2 border-t border-slate-700">Classificazione</h4>
              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-4">
@@ -448,65 +657,506 @@ const TurnDetails = ({ turn }) => {
     )
 };
 
-const TurnLog = ({ turns, onExport, onCalculateStats, isExportDisabled, onDeleteTurn, onExportSession }) => {
-    const formatTime = (seconds) => {
-      const mins = Math.floor(seconds / 60);
-      const secs = seconds % 60;
-      return `${mins.toString().padStart(2, '0')}:${secs.toFixed(2).padStart(5, '0')}`;
-    };
-    return (
-        <div className="bg-gradient-to-br from-slate-800 to-slate-900/50 rounded-lg p-4 border border-slate-700">
-            <div className="flex justify-between items-center mb-4 flex-wrap gap-4">
-                <h2 className="text-xl font-semibold text-slate-300">Log dei Turni</h2>
-                <div className="flex gap-4">
-                    <button 
-                        onClick={onCalculateStats}
-                        disabled={isExportDisabled}
-                        className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 disabled:bg-slate-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-slate-800">
-                        Calcola Statistiche
-                    </button>
-                     <button 
-                        onClick={onExportSession}
-                        disabled={isExportDisabled}
-                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 disabled:bg-slate-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800">
-                        Salva Sessione
-                    </button>
-                    <button 
-                        onClick={onExport}
-                        disabled={isExportDisabled}
-                        className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 disabled:bg-slate-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-slate-800">
-                        Esporta in TXT
-                    </button>
-                </div>
+const ClassifiedTurnLog = ({ turns, onDeleteTurn, onModifyTurn, onEditTurnGrouping }) => (
+    <div className="max-h-96 overflow-y-auto space-y-2 pr-2">
+        {turns.length === 0 ? (
+             <p className="text-slate-400 text-center py-8">Nessun turno classificato.</p>
+        ) : (
+            turns.map((turn, index) => (
+                <details key={turn.id} className="bg-slate-700/50 rounded-lg">
+                    <summary className="p-3 cursor-pointer hover:bg-slate-700 rounded-t-lg list-none flex justify-between items-center">
+                        <div>
+                            <span className="font-bold">Turno {index + 1}</span>
+                            <span className="font-mono text-cyan-400 ml-4">{formatTime(turn.timestamp)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-400">Dettagli</span>
+                            <button onClick={(e) => { e.stopPropagation(); onEditTurnGrouping(turn.id); }} className="text-green-400 hover:text-green-300 p-1 rounded-full hover:bg-green-500/20 transition-colors" aria-label={`Edit event grouping for turn ${index + 1}`}>
+                                <GroupIcon />
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); onModifyTurn(turn); }} className="text-blue-400 hover:text-blue-300 p-1 rounded-full hover:bg-blue-500/20 transition-colors" aria-label={`Modify turn ${index + 1}`}>
+                                <ModifyIcon />
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); onDeleteTurn(turn); }} className="text-red-400 hover:text-red-300 p-1 rounded-full hover:bg-red-500/20 transition-colors" aria-label={`Delete turn ${index + 1}`}>
+                                <TrashIcon />
+                            </button>
+                        </div>
+                    </summary>
+                    <TurnDetails turn={turn} />
+                </details>
+            ))
+        )}
+    </div>
+);
+
+const EventLog = React.forwardRef(({ events, onToggleSelection, selectedIds, onDeleteEvent, onSeek, videoDuration, onDisassociateEvent, editingTurnId, editedEventIds, onTurnEditToggleEvent }, ref) => {
+    if (videoDuration === 0) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <p className="text-slate-400 text-center">Carica un video per visualizzare la timeline.</p>
             </div>
-            <div className="max-h-96 overflow-y-auto space-y-2 pr-2">
-                {turns.length === 0 ? (
-                     <p className="text-slate-400 text-center py-8">Nessun turno registrato.</p>
-                ) : (
-                    turns.map((turn, index) => (
-                        <details key={turn.id} className="bg-slate-700/50 rounded-lg">
-                            <summary className="p-3 cursor-pointer hover:bg-slate-700 rounded-t-lg list-none flex justify-between items-center">
-                                <div>
-                                    <span className="font-bold">Turno {index + 1}</span>
-                                    <span className="font-mono text-cyan-400 ml-4">{formatTime(turn.timestamp)}</span>
-                                </div>
-                                <div className="flex items-center gap-4">
-                                    <span className="text-xs text-slate-400">Dettagli</span>
-                                    <button 
-                                        onClick={(e) => { e.stopPropagation(); onDeleteTurn(turn.id); }} 
-                                        className="text-red-400 hover:text-red-300 p-1 rounded-full hover:bg-red-500/20 transition-colors"
-                                        aria-label={`Delete turn ${index + 1}`}
-                                    >
-                                        <TrashIcon />
-                                    </button>
-                                </div>
-                            </summary>
-                            <TurnDetails turn={turn} />
-                        </details>
-                    ))
+        );
+    }
+
+    const trackConfig = {
+        focus:        { label: 'Focus Attentivo', color: 'bg-amber-500' },
+        eyeContact:   { label: 'Contatto Visivo', color: 'bg-pink-500' },
+        parentAction: { label: 'Parent Action', color: 'bg-blue-500' },
+        parentSpeech: { label: 'Parent Speech', color: 'bg-sky-500' },
+        childSpeech:  { label: 'Child Speech',  color: 'bg-teal-500' },
+        childAction:  { label: 'Child Action',  color: 'bg-emerald-500' },
+    };
+
+    const tracks = Object.keys(trackConfig).map(trackId => ({
+        id: trackId,
+        ...trackConfig[trackId],
+        events: events.filter(e => e.track === trackId)
+    }));
+    
+    const PIXELS_PER_SECOND = 50; // Increased to expand timeline
+    const timelineWidth = videoDuration * PIXELS_PER_SECOND;
+
+    const handleTrackClick = (e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const scrollLeft = e.currentTarget.parentElement.parentElement.scrollLeft;
+        const x = e.clientX - rect.left + scrollLeft;
+        const clickRatio = x / timelineWidth;
+        const seekTime = clickRatio * videoDuration;
+        onSeek(seekTime);
+    };
+
+    const TimeRuler = ({ duration, width }) => {
+        if (duration <= 0) return null;
+        const markers = [];
+        
+        let interval;
+        if (duration < 60) { // Less than 1 minute
+            interval = 5;
+        } else if (duration < 300) { // Less than 5 minutes
+            interval = 10;
+        } else if (duration < 900) { // Less than 15 minutes
+            interval = 30;
+        } else { // Longer than 15 minutes
+            interval = 60;
+        }
+        
+        const numMarkers = Math.floor(duration / interval);
+        
+        for (let i = 1; i <= numMarkers; i++) {
+            const time = i * interval;
+            const left = (time / duration) * width;
+            markers.push({ time, left });
+        }
+        
+        const formatRulerTime = (seconds) => { 
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        };
+
+        return (
+            <div className="relative h-6 w-full mb-2" style={{ width: `${width}px`}}>
+                {markers.map(marker => (
+                    <div key={marker.time} style={{ left: `${marker.left}px` }} className="absolute -translate-x-1/2 text-xs text-slate-400 flex flex-col items-center">
+                        <span>{formatRulerTime(marker.time)}</span>
+                        <div className="h-2 w-px bg-slate-500"></div>
+                    </div>
+                ))}
+            </div>
+        );
+    };
+
+    const EventMarker = ({ event, track }) => {
+        const leftPosition = (event.timestamp / videoDuration) * 100;
+        
+        let markerState = 'default'; // default, selected, classified, editing_member, editing_add, editing_disabled
+        let isClickable = true;
+        
+        if (editingTurnId) {
+            if (editedEventIds.has(event.id)) {
+                markerState = 'editing_member';
+            } else if (event.turnId) { // Belongs to another turn
+                markerState = 'editing_disabled';
+                isClickable = false;
+            } else { // Is available to be added
+                markerState = 'editing_add';
+            }
+        } else {
+            if (selectedIds.has(event.id)) {
+                markerState = 'selected';
+            } else if (event.turnId) {
+                markerState = 'classified';
+            }
+        }
+
+        const stateClasses = {
+            default: `${track.color} bg-opacity-80 backdrop-blur-sm ring-1 ring-black/20`,
+            selected: 'ring-2 ring-cyan-400 z-10 scale-105',
+            classified: 'bg-slate-600/80 backdrop-blur-sm opacity-70 hover:opacity-100',
+            editing_member: 'ring-2 ring-yellow-400 z-10 scale-105 shadow-yellow-500/50',
+            editing_add: `${track.color} bg-opacity-50 backdrop-blur-sm ring-1 ring-black/20 opacity-60 hover:opacity-100`,
+            editing_disabled: 'bg-slate-800/80 backdrop-blur-sm opacity-30 cursor-not-allowed',
+        };
+
+        const handleClick = (e) => {
+            e.stopPropagation();
+            if (!isClickable) return;
+            
+            onSeek(event.timestamp);
+
+            if (editingTurnId) {
+                onTurnEditToggleEvent(event.id);
+            } else if (markerState === 'classified') {
+                if (window.confirm('Vuoi rimuovere questo evento dal turno a cui è associato?')) {
+                    onDisassociateEvent(event.id);
+                }
+            } else {
+                onToggleSelection(event.id);
+            }
+        };
+
+        return (
+            <div
+                onClick={handleClick}
+                className={`absolute top-1/2 -translate-y-1/2 h-auto group flex items-center p-1.5 rounded-md text-xs text-white shadow-md transition-all duration-200 ${isClickable ? 'cursor-pointer' : ''}
+                            ${stateClasses[markerState]}
+                            hover:z-20 hover:scale-105 hover:shadow-lg`}
+                style={{ left: `${leftPosition}%`, minWidth: '60px', maxWidth: '180px' }}
+                title={event.content}
+            >
+                <p className="truncate flex-grow">{event.content}</p>
+                {(markerState === 'default' || markerState === 'editing_add') && (
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); onDeleteEvent(event.id); }} 
+                        className="absolute -top-1 -right-1 text-red-200 bg-slate-900 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100"
+                        aria-label={`Delete event`}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
                 )}
             </div>
+        );
+    };
+
+    return (
+         <div className="space-y-4 pr-2">
+            {events.length === 0 ? (
+                <div className="flex items-center justify-center h-64">
+                     <p className="text-slate-400 text-center py-8">Nessun evento registrato.</p>
+                </div>
+            ) : (
+                <div ref={ref} className="overflow-x-auto pb-2">
+                    <div style={{ width: `${timelineWidth}px`, minWidth: `100%`, background: '#1e293b' }}>
+                        <TimeRuler duration={videoDuration} width={timelineWidth} />
+                        {tracks.map(track => (
+                            <div key={track.id} className="mb-2">
+                                <p className="text-sm font-medium text-slate-300 mb-1 ml-1" style={{ position: 'sticky', left: 0 }}>{track.label}</p>
+                                <div 
+                                    onClick={handleTrackClick} 
+                                    className="relative w-full h-10 bg-slate-700/50 rounded-lg cursor-pointer border-y border-slate-700"
+                                >
+                                    {track.events.map(event => <EventMarker key={event.id} event={event} track={track} />)}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
+    );
+});
+
+const TimelinePanel = ({ events, turns, selectedEventIds, onToggleSelection, onStartClassification, onDeleteEvent, onDeleteTurn, onModifyTurn, onExport, onCalculateStats, onExportSession, isDataPresent, onSeek, videoDuration, videoFilename, onDisassociateEvent, editingTurnId, onStartTurnEdit, onCancelTurnEdit, onSaveTurnEdit, editedEventIds, onTurnEditToggleEvent }) => {
+    const { useState, useRef } = React;
+    const [activeTab, setActiveTab] = useState('events');
+    const isClassificationDisabled = selectedEventIds.size === 0 || editingTurnId;
+    const timelineRef = useRef(null);
+    const editingTurn = editingTurnId ? turns.find(t => t.id === editingTurnId) : null;
+    const editingTurnIndex = editingTurnId ? turns.findIndex(t => t.id === editingTurnId) : -1;
+
+    const handleExportTimelineImage = () => {
+        const timelineEl = timelineRef.current;
+        if (timelineEl) {
+             // Temporarily set scroll to start to capture full image
+            timelineEl.scrollLeft = 0;
+            html2canvas(timelineEl.firstChild, { // Capture the inner div with the full width
+                allowTaint: true,
+                useCORS: true,
+                backgroundColor: '#1e293b', // slate-800
+                scale: 2 // Higher resolution
+            }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = `timeline_${videoFilename || 'export'}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            });
+        }
+    };
+
+    const TabButton = ({ isActive, onClick, children }) => (
+        <button
+            onClick={onClick}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                isActive 
+                ? 'bg-slate-800 text-cyan-400 border-b-2 border-cyan-400' 
+                : 'bg-transparent text-slate-400 hover:bg-slate-700/50'
+            }`}
+        >
+            {children}
+        </button>
+    );
+
+    return (
+        <div className="bg-gradient-to-br from-slate-800 to-slate-900/50 rounded-lg border border-slate-700">
+            <header className="p-4 flex justify-between items-center flex-wrap gap-4 border-b border-slate-700">
+                 <div className="flex gap-2 border-b border-slate-700 -mb-4">
+                     <TabButton isActive={activeTab === 'events'} onClick={() => setActiveTab('events')}>Master Timeline</TabButton>
+                     <TabButton isActive={activeTab === 'turns'} onClick={() => setActiveTab('turns')}>Classified Turns ({turns.length})</TabButton>
+                </div>
+                {activeTab === 'events' ? (
+                     <div className="flex gap-4">
+                        <button onClick={handleExportTimelineImage} disabled={events.length === 0 || editingTurnId} className="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 disabled:bg-slate-600 disabled:cursor-not-allowed">
+                           Esporta Timeline come Immagine
+                        </button>
+                         <button 
+                            onClick={onStartClassification}
+                            disabled={isClassificationDisabled}
+                            className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 disabled:bg-slate-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-slate-800">
+                            Group as Turn & Classify ({selectedEventIds.size})
+                        </button>
+                    </div>
+                ) : (
+                    <div className="flex gap-4">
+                         <button onClick={onCalculateStats} disabled={!isDataPresent || editingTurnId} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 disabled:bg-slate-600 disabled:cursor-not-allowed">
+                            Calcola Statistiche
+                        </button>
+                         <button onClick={onExportSession} disabled={!isDataPresent || editingTurnId} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 disabled:bg-slate-600 disabled:cursor-not-allowed">
+                            Salva Sessione
+                        </button>
+                        <button onClick={onExport} disabled={!isDataPresent || editingTurnId} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 disabled:bg-slate-600 disabled:cursor-not-allowed">
+                            Esporta in TXT
+                        </button>
+                    </div>
+                )}
+            </header>
+            {editingTurnId && (
+                <div className="p-4 bg-yellow-900/30 border-b border-yellow-500/50 flex justify-between items-center">
+                    <p className="text-yellow-300 font-semibold">
+                        Editing Event Group for Turn {editingTurnIndex + 1}. Select events on the timeline to add or remove.
+                    </p>
+                    <div className="flex gap-2">
+                        <button onClick={onCancelTurnEdit} className="bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">Cancel</button>
+                        <button onClick={onSaveTurnEdit} className="bg-yellow-500 hover:bg-yellow-600 text-slate-900 font-bold py-2 px-4 rounded-lg transition-colors">Save Changes</button>
+                    </div>
+                </div>
+            )}
+            <div className="p-4">
+                {activeTab === 'events' && <EventLog ref={timelineRef} events={events} onToggleSelection={onToggleSelection} selectedIds={selectedEventIds} onDeleteEvent={onDeleteEvent} onSeek={onSeek} videoDuration={videoDuration} onDisassociateEvent={onDisassociateEvent} editingTurnId={editingTurnId} editedEventIds={editedEventIds} onTurnEditToggleEvent={onTurnEditToggleEvent} />}
+                {activeTab === 'turns' && <ClassifiedTurnLog turns={turns} onDeleteTurn={onDeleteTurn} onModifyTurn={onModifyTurn} onEditTurnGrouping={onStartTurnEdit} />}
+            </div>
+        </div>
+    );
+}
+
+// --- CLASSIFICATION FORM COMPONENT ---
+const ClassificationForm = ({ events, onSave, onCancel, initialData }) => {
+    const { useState, useEffect, useMemo } = React;
+    const initialParentComm = PARENT_COMM_STRATEGIES.reduce((acc, curr) => ({...acc, [curr.id]: false }), {});
+    
+    const getInitialState = (eventsForForm) => {
+        const hasEyeContactEvent = eventsForForm?.some(e => e.track === 'eyeContact') || false;
+        const focusEvent = eventsForForm?.find(e => e.track === 'focus');
+
+        return {
+            communicationMode: '',
+            vocalizationType: '',
+            sharedAttention: '',
+            parentCommunication: initialParentComm,
+            isInadequate: false,
+            childProvidesNewInfo: false,
+            childUnderstandsSemantic: '',
+            usesOnlyAuditoryChannel: false,
+            isEyeContactAdequate: false,
+            eyeContact: hasEyeContactEvent,
+            overlappingDialogue: false,
+            focusAttentivoNuovo: !!focusEvent,
+            focusComune: focusEvent?.content === 'Focus Comune',
+            focusNonComune: focusEvent?.content === 'Focus Non Comune',
+        };
+    };
+
+    const [formData, setFormData] = useState(initialData || getInitialState(events));
+    
+    useEffect(() => {
+        setFormData(initialData || getInitialState(events));
+    }, [initialData, events]);
+
+    const handleRadioChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+    
+    const handleClearRadio = (fieldName) => {
+        setFormData(prev => ({...prev, [fieldName]: ''}));
+    };
+
+    const handleCheckboxChange = (e) => {
+         const { name, checked } = e.target;
+        setFormData(prev => ({ ...prev, [name]: checked }));
+    }
+    const handleParentCommChange = (e) => {
+        const { name, checked } = e.target;
+        setFormData(prev => ({...prev, parentCommunication: {...prev.parentCommunication, [name]: checked }}));
+    };
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onSave(formData);
+    };
+
+    const groupedStrategies = useMemo(() => {
+        const groups = { T: [], D: [], DC: [], C: [], UNCATEGORIZED: [] };
+        PARENT_COMM_STRATEGIES.forEach(strategy => {
+            const styles = PARENT_COMM_STYLES[strategy.id];
+            if (styles && styles.length > 0) {
+                styles.forEach(styleCode => {
+                    if (groups[styleCode]) {
+                        groups[styleCode].push(strategy);
+                    }
+                });
+            } else {
+                groups.UNCATEGORIZED.push(strategy);
+            }
+        });
+        return groups;
+    }, []);
+
+    const STYLES_CONFIG = {
+        T: { label: 'Tutoriale', color: 'sky' },
+        D: { label: 'Didattico', color: 'emerald' },
+        DC: { label: 'Direttivo', color: 'amber' },
+        C: { label: 'Conversazionale', color: 'violet' }
+    };
+
+    const Section = ({ title, onClear, children }) => (
+        <div className="mb-6">
+            <div className="flex justify-between items-center border-b border-slate-600 pb-2 mb-3">
+                <h3 className="text-md font-semibold text-cyan-300">{title}</h3>
+                {onClear && (
+                    <button type="button" onClick={onClear} className="text-xs text-slate-400 hover:text-white hover:underline focus:outline-none">
+                        Reset
+                    </button>
+                )}
+            </div>
+            {children}
+        </div>
+    );
+    const RadioGroup = ({ name, options, selected, onChange }) => (
+         <div className="flex flex-wrap gap-x-4 gap-y-2">
+            {options.map(opt => (
+                <label key={opt} className="flex items-center space-x-2 text-slate-300 cursor-pointer text-sm">
+                    <input type="radio" name={name} value={opt} checked={selected === opt} onChange={onChange} className="form-radio bg-slate-600 border-slate-500 text-cyan-500 focus:ring-cyan-500" />
+                    <span>{opt}</span>
+                </label>
+            ))}
+        </div>
+    );
+    
+    const formTitle = initialData ? 'Modify Turn Classification' : `Classify Turn (from ${events.length} events)`;
+
+    return (
+        <form onSubmit={handleSubmit} className="bg-gradient-to-br from-slate-800 to-slate-900/50 rounded-lg h-full border border-cyan-500/50 flex flex-col">
+            <header className="p-4 border-b border-slate-700 flex-shrink-0">
+                <h2 className="text-xl font-bold text-white">{formTitle}</h2>
+            </header>
+            <div className="p-6 flex-grow overflow-y-auto pr-2">
+                <Section title="Turn Attributes">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                     <Checkbox name="eyeContact" checked={formData.eyeContact} onChange={handleCheckboxChange}>Eye contact</Checkbox>
+                     <Checkbox name="overlappingDialogue" checked={formData.overlappingDialogue} onChange={handleCheckboxChange}>Overlapping dialogue</Checkbox>
+                     <div>
+                        <Checkbox name="focusAttentivoNuovo" checked={formData.focusAttentivoNuovo} onChange={handleCheckboxChange}>Focus attentivo nuovo</Checkbox>
+                        {formData.focusAttentivoNuovo && (
+                            <div className="pl-6 pt-2 flex flex-col gap-2">
+                                 <Checkbox name="focusComune" checked={formData.focusComune} onChange={handleCheckboxChange}>Focus Comune</Checkbox>
+                                 <Checkbox name="focusNonComune" checked={formData.focusNonComune} onChange={handleCheckboxChange}>Focus Non Comune</Checkbox>
+                            </div>
+                        )}
+                     </div>
+                  </div>
+                </Section>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8">
+                    {/* LEFT COLUMN */}
+                    <div>
+                         <Section title="1. Communication Mode" onClear={() => handleClearRadio('communicationMode')}>
+                           <RadioGroup name="communicationMode" options={COMM_MODES} selected={formData.communicationMode} onChange={handleRadioChange} />
+                        </Section>
+                        <Section title="2. Vocalization Type" onClear={() => handleClearRadio('vocalizationType')}>
+                             <RadioGroup name="vocalizationType" options={VOCALIZATION_TYPES} selected={formData.vocalizationType} onChange={handleRadioChange} />
+                        </Section>
+                        <Section title="3. Shared Attention" onClear={() => handleClearRadio('sharedAttention')}>
+                             <RadioGroup name="sharedAttention" options={SHARED_ATTENTION_OPTS} selected={formData.sharedAttention} onChange={handleRadioChange} />
+                        </Section>
+                    </div>
+                    {/* RIGHT COLUMN */}
+                    <div>
+                        <Section title="Turn Quality & Context">
+                            <div className="space-y-4">
+                                <Checkbox name="isInadequate" checked={formData.isInadequate} onChange={handleCheckboxChange}>4. Is turn inadequate?</Checkbox>
+                                <Checkbox name="childProvidesNewInfo" checked={formData.childProvidesNewInfo} onChange={handleCheckboxChange}>5. Child providing new info?</Checkbox>
+                                <Checkbox name="usesOnlyAuditoryChannel" checked={formData.usesOnlyAuditoryChannel} onChange={handleCheckboxChange}>7. Uses only auditory channel?</Checkbox>
+                                <Checkbox name="isEyeContactAdequate" checked={formData.isEyeContactAdequate} onChange={handleCheckboxChange}>8. Is eye contact adequate?</Checkbox>
+                            </div>
+                        </Section>
+                         <Section title="6. Semantic Comprehension" onClear={() => handleClearRadio('childUnderstandsSemantic')}>
+                            <p className="text-sm text-slate-400 mb-2">Il bambino comprende il referente semantico?</p>
+                            <RadioGroup name="childUnderstandsSemantic" options={SEMANTIC_OPTS} selected={formData.childUnderstandsSemantic} onChange={handleRadioChange} />
+                         </Section>
+                    </div>
+                </div>
+
+                <Section title="9. Parent Communication">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {Object.entries(STYLES_CONFIG).map(([code, config]) => (
+                            <div key={code} className={`border border-${config.color}-500/50 rounded-lg p-3`}>
+                                <h4 className={`font-semibold text-${config.color}-300 mb-2`}>{config.label}</h4>
+                                <div className="space-y-2 text-sm">
+                                    {groupedStrategies[code].map(item => (
+                                        <label key={item.id} className="flex items-start space-x-2 cursor-pointer text-slate-300 hover:text-white">
+                                            <input type="checkbox" name={item.id} checked={formData.parentCommunication[item.id]} onChange={handleParentCommChange} className="form-checkbox mt-1 bg-slate-600 border-slate-500 text-cyan-500 focus:ring-cyan-500" />
+                                            <span>{item.label}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                        {groupedStrategies.UNCATEGORIZED.length > 0 && (
+                            <div className="md:col-span-2 border border-slate-600 rounded-lg p-3">
+                                <h4 className="font-semibold text-slate-400 mb-2">Non categorizzato</h4>
+                                <div className="space-y-2 text-sm">
+                                    {groupedStrategies.UNCATEGORIZED.map(item => (
+                                        <label key={item.id} className="flex items-start space-x-2 cursor-pointer text-slate-300 hover:text-white">
+                                            <input type="checkbox" name={item.id} checked={formData.parentCommunication[item.id]} onChange={handleParentCommChange} className="form-checkbox mt-1 bg-slate-600 border-slate-500 text-cyan-500 focus:ring-cyan-500" />
+                                            <span>{item.label}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </Section>
+            </div>
+            <footer className="p-4 border-t border-slate-700 mt-auto flex gap-4 flex-shrink-0">
+                <button type="button" onClick={onCancel} className="w-full bg-slate-600 hover:bg-slate-700 text-white font-bold py-3 px-6 rounded-lg transition-colors duration-300">
+                    Annulla
+                </button>
+                <button type="submit" className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-6 rounded-lg transition-colors duration-300">
+                    {initialData ? 'Aggiorna Classificazione' : 'Salva Classificazione'}
+                </button>
+            </footer>
+        </form>
     );
 };
 
@@ -518,7 +1168,6 @@ const StatCard = ({ title, value, description }) => (
         <p className="text-xs text-slate-400">{description}</p>
     </div>
 );
-
 const StyleBar = ({ label, percentage }) => (
     <div className="w-full">
         <div className="flex justify-between mb-1">
@@ -530,10 +1179,8 @@ const StyleBar = ({ label, percentage }) => (
         </div>
     </div>
 );
-
 const StatisticsModal = ({ isOpen, onClose, stats, onExportStats }) => {
     if (!isOpen) return null;
-
     return (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4" aria-modal="true" role="dialog">
             <div className="bg-slate-800 border border-slate-700 rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
@@ -546,337 +1193,307 @@ const StatisticsModal = ({ isOpen, onClose, stats, onExportStats }) => {
                          <p className="text-slate-400 text-center py-8">Not enough data to calculate statistics.</p>
                     ) : (
                         <div className="space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <StatCard title="CEI" value={stats.cei.toFixed(2)} description="Communication Efficacy Index" />
                                 <StatCard title="TT-CONS" value={stats.ttCons.toFixed(2)} description="Consistency of Turn-Taking" />
                                 <StatCard title="TT-AD" value={stats.ttAd.toFixed(2)} description="Adequacy of Turn-Taking" />
                                 <StatCard title="EC-PRES" value={stats.ecPres.toFixed(2)} description="Presence of Eye Contact" />
                                 <StatCard title="EC-AD" value={stats.ecAd.toFixed(2)} description="Adequacy of Eye Contact" />
+                                <StatCard title="EC-DEP" value={stats.ecDep.toFixed(2)} description="Dependency on Eye Contact" />
+                                <StatCard title="JA" value={stats.ja.toFixed(2)} description="Joint Attention" />
                                 <StatCard title="AUT" value={stats.aut.toFixed(2)} description="Auditory Autonomy" />
                                 <StatCard title="IN" value={stats.in.toFixed(2)} description="Initiative" />
                             </div>
                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                <div className="bg-slate-700/50 p-4 rounded-lg">
-                                    <h3 className="text-lg font-semibold text-cyan-400 mb-3">Communicative Profile</h3>
-                                    <StatCard title="COMMUNICATIVE MODE" value={stats.communicativeMode} description="Child's predominant communication mode" />
-                                    <div className="mt-4">
-                                        <StatCard title="VOCALIZATION TYPE" value={stats.predominantVocalization} description="Child's most frequent vocalization" />
-                                    </div>
-                                </div>
-                                <div className="bg-slate-700/50 p-4 rounded-lg">
-                                    <h3 className="text-lg font-semibold text-cyan-400 mb-3">Parental Communication Style</h3>
-                                    <div className="space-y-3 mb-4">
-                                        <StyleBar label="Tutorial" percentage={stats.parentalStyle.percentages.TUTORIAL} />
-                                        <StyleBar label="Didactic" percentage={stats.parentalStyle.percentages.DIDACTIC} />
-                                        <StyleBar label="Directive" percentage={stats.parentalStyle.percentages.DIRECTIVE} />
-                                        <StyleBar label="Conversational" percentage={stats.parentalStyle.percentages.CONVERSATIONAL} />
-                                    </div>
-                                    <StatCard title="PREDOMINANT STYLE" value={stats.parentalStyle.predominantStyle} description="Based on interaction patterns" />
-                                </div>
+                                <div className="bg-slate-700/50 p-4 rounded-lg"><h3 className="text-lg font-semibold text-cyan-400 mb-3">Communicative Profile</h3><StatCard title="COMMUNICATIVE MODE" value={stats.communicativeMode} description="Child's predominant communication mode" /><div className="mt-4"><StatCard title="VOCALIZATION TYPE" value={stats.predominantVocalization} description="Child's most frequent vocalization" /></div></div>
+                                <div className="bg-slate-700/50 p-4 rounded-lg"><h3 className="text-lg font-semibold text-cyan-400 mb-3">Parental Communication Style</h3><div className="space-y-3 mb-4"><StyleBar label="Tutorial" percentage={stats.parentalStyle.percentages.TUTORIAL} /><StyleBar label="Didactic" percentage={stats.parentalStyle.percentages.DIDACTIC} /><StyleBar label="Directive" percentage={stats.parentalStyle.percentages.DIRECTIVE} /><StyleBar label="Conversational" percentage={stats.parentalStyle.percentages.CONVERSATIONAL} /></div><StatCard title="PREDOMINANT STYLE" value={stats.parentalStyle.predominantStyle} description="Based on interaction patterns" /></div>
                             </div>
                         </div>
                     )}
                 </div>
                  <footer className="p-4 border-t border-slate-700 mt-auto flex justify-end gap-4">
-                    <button 
-                        type="button" 
-                        onClick={onExportStats}
-                        disabled={!stats}
-                        className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition-colors duration-300 disabled:bg-slate-600 disabled:cursor-not-allowed">
-                        Esporta Statistiche
-                    </button>
-                    <button type="button" onClick={onClose} className="bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-6 rounded-lg transition-colors duration-300">
-                        Chiudi
-                    </button>
+                    <button type="button" onClick={onExportStats} disabled={!stats} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition-colors duration-300 disabled:bg-slate-600 disabled:cursor-not-allowed">Esporta Statistiche</button>
+                    <button type="button" onClick={onClose} className="bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-6 rounded-lg transition-colors duration-300">Chiudi</button>
                 </footer>
             </div>
         </div>
     );
 };
 
-// From components/TranscriptionPanel.tsx
-const Section = ({ title, children, className }) => (
-    <div className={`mb-4 ${className}`}>
-        <h3 className="text-md font-semibold text-cyan-300 border-b border-slate-600 pb-2 mb-3">{title}</h3>
-        {children}
-    </div>
-);
-
-const RadioGroup = ({ name, options, selected, onChange }) => (
-     <div className="flex flex-wrap gap-x-4 gap-y-2">
-        {options.map(opt => (
-            <label key={opt} className="flex items-center space-x-2 text-slate-300 cursor-pointer text-sm">
-                <input type="radio" name={name} value={opt} checked={selected === opt} onChange={onChange} className="form-radio bg-slate-600 border-slate-500 text-cyan-500 focus:ring-cyan-500" />
-                <span>{opt}</span>
-            </label>
-        ))}
-    </div>
-);
-
-const Checkbox = ({ name, checked, onChange, children }) => (
-    <label className="flex items-center space-x-2 text-slate-300 cursor-pointer">
-        <input type="checkbox" name={name} checked={checked} onChange={onChange} className="form-checkbox bg-slate-600 border-slate-500 text-cyan-500 focus:ring-cyan-500" />
-        <span>{children}</span>
-    </label>
-);
-
-const ClassificationPanel = ({ onSave, onClose }) => {
-    const { useState } = React;
-    const initialParentComm = PARENT_COMM_STRATEGIES.reduce((acc, curr) => ({...acc, [curr.id]: false }), {});
-    const initialState = {
-        communicationMode: '',
-        vocalizationType: '',
-        sharedAttention: '',
-        parentCommunication: initialParentComm,
-        isInadequate: false,
-        childProvidesNewInfo: false,
-        childUnderstandsSemantic: '',
-        usesOnlyAuditoryChannel: false,
-        isEyeContactAdequate: false,
-    };
-    const [formData, setFormData] = useState(initialState);
-
-    const handleRadioChange = (e) => {
-        setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    };
-
-    const handleCheckboxChange = (e) => {
-        setFormData(prev => ({ ...prev, [e.target.name]: e.target.checked }));
-    };
-
-    const handleParentCommChange = (e) => {
-        const { name, checked } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            parentCommunication: {
-                ...prev.parentCommunication,
-                [name]: checked,
-            },
-        }));
-    };
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        onSave(formData);
-    };
-
-    return (
-        <div className="bg-gradient-to-br from-slate-800 to-slate-900/50 rounded-lg p-4 h-full border border-cyan-500/50 flex flex-col">
-            <header className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold text-white">Classifica Turno</h2>
-                <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl leading-none">&times;</button>
-            </header>
-            <form onSubmit={handleSubmit} className="flex-grow overflow-y-auto pr-2">
-                <Section title="1. Communication Mode">
-                   <RadioGroup name="communicationMode" options={COMM_MODES} selected={formData.communicationMode} onChange={handleRadioChange} />
-                </Section>
-                <Section title="2. Vocalization Type">
-                     <RadioGroup name="vocalizationType" options={VOCALIZATION_TYPES} selected={formData.vocalizationType} onChange={handleRadioChange} />
-                </Section>
-                <Section title="3. Shared Attention">
-                     <RadioGroup name="sharedAttention" options={SHARED_ATTENTION_OPTS} selected={formData.sharedAttention} onChange={handleRadioChange} />
-                </Section>
-                 <Section title="4. Parent Communication">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                        {PARENT_COMM_STRATEGIES.map(item => (
-                            <label key={item.id} className="flex items-start space-x-2 text-slate-300 cursor-pointer">
-                                <input type="checkbox" name={item.id} checked={formData.parentCommunication[item.id]} onChange={handleParentCommChange} className="form-checkbox mt-1 bg-slate-600 border-slate-500 text-cyan-500 focus:ring-cyan-500" />
-                                <span>{item.label}</span>
-                            </label>
-                        ))}
-                    </div>
-                </Section>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <Section title="5. Is turn inadequate?">
-                           <Checkbox name="isInadequate" checked={formData.isInadequate} onChange={handleCheckboxChange}>Check if observed</Checkbox>
-                        </Section>
-                         <Section title="6. Child providing new info?">
-                           <Checkbox name="childProvidesNewInfo" checked={formData.childProvidesNewInfo} onChange={handleCheckboxChange}>Yes</Checkbox>
-                        </Section>
-                        <Section title="7. Il bambino comprende il referente semantico?">
-                            <RadioGroup name="childUnderstandsSemantic" options={SEMANTIC_OPTS} selected={formData.childUnderstandsSemantic} onChange={handleRadioChange} />
-                        </Section>
-                    </div>
-                    <div>
-                        <Section title="8. Utilizza solo il canale uditivo?">
-                           <Checkbox name="usesOnlyAuditoryChannel" checked={formData.usesOnlyAuditoryChannel} onChange={handleCheckboxChange}>Seleziona se osservato</Checkbox>
-                        </Section>
-                        <Section title="9. Il contatto oculare è adeguato?">
-                           <Checkbox name="isEyeContactAdequate" checked={formData.isEyeContactAdequate} onChange={handleCheckboxChange}>Check if observed</Checkbox>
-                        </Section>
-                    </div>
-                </div>
-            </form>
-             <footer className="pt-4 mt-auto">
-                <button type="button" onClick={handleSubmit} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-6 rounded-lg transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-slate-800">
-                    Salva Classificazione
-                </button>
-            </footer>
-        </div>
-    );
-};
-
-// From components/VideoPlayer.tsx
-const VideoPlayer = ({ videoUrl, onFileChange, onTimeUpdate, videoRef, onImportSession }) => {
-    const handleFileChange = (event) => {
-        if (event.target.files && event.target.files[0]) {
-            onFileChange(event.target.files[0]);
-        }
-    };
-
-    const handleSessionFileChange = (event) => {
-        if (event.target.files && event.target.files[0]) {
-            onImportSession(event.target.files[0]);
-        }
-    };
-
-    return (
-        <div className="bg-gradient-to-br from-slate-800 to-slate-900/50 rounded-lg p-4 flex flex-col items-center justify-center h-[500px] border border-slate-700">
-            {!videoUrl ? (
-                <div className="text-center">
-                    <h2 className="text-xl font-semibold mb-4 text-slate-300">Carica un Video</h2>
-                     <label htmlFor="video-upload" className="cursor-pointer bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300">
-                        Seleziona File Video
-                    </label>
-                    <input
-                        id="video-upload"
-                        type="file"
-                        accept="video/*"
-                        onChange={handleFileChange}
-                        className="hidden"
-                    />
-                    <div className="mt-6 text-sm text-slate-400">
-                        <p>Oppure</p>
-                         <label htmlFor="session-upload" className="cursor-pointer text-cyan-400 hover:text-cyan-300 hover:underline transition">
-                            importa una sessione di analisi (.json)
-                        </label>
-                        <input
-                            id="session-upload"
-                            type="file"
-                            accept=".json"
-                            onChange={handleSessionFileChange}
-                            className="hidden"
-                        />
-                    </div>
-                </div>
-            ) : (
-                <video
-                    ref={videoRef}
-                    src={videoUrl}
-                    controls
-                    className="w-full h-full object-contain rounded-md"
-                    onTimeUpdate={(e) => onTimeUpdate(e.currentTarget.currentTime)}
-                />
-            )}
-        </div>
-    );
-};
-
-// From App.tsx
+// --- MAIN APP COMPONENT ---
 const { useState, useRef, useCallback, useMemo } = React;
 
 const App = () => {
     const [videoFile, setVideoFile] = useState(null);
     const [videoUrl, setVideoUrl] = useState(null);
+    const [videoDuration, setVideoDuration] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
-    const [turns, setTurns] = useState([]);
-    const [isClassifying, setIsClassifying] = useState(false);
-    const [turnToClassify, setTurnToClassify] = useState(null);
+    const [events, setEvents] = useState([]); // Granular events from logger
+    const [turns, setTurns] = useState([]); // Classified turns
+    const [selectedEventIds, setSelectedEventIds] = useState(new Set());
+    const [classificationTarget, setClassificationTarget] = useState(null); // Holds events for modal
+    const [modificationTarget, setModificationTarget] = useState(null); // Holds turn for modification
     const [isStatsOpen, setIsStatsOpen] = useState(false);
-
+    const [editingTurnId, setEditingTurnId] = useState(null);
+    const [editedEventIds, setEditedEventIds] = useState(new Set());
     const videoRef = useRef(null);
 
-    const stats = useMemo(() => {
-        if (turns.length > 0) {
-            return calculateStatistics(turns);
-        }
-        return null;
-    }, [turns]);
+    const stats = useMemo(() => calculateStatistics(turns), [turns]);
 
     const handleFileChange = (file) => {
         if (file) {
             setVideoFile(file);
-            const url = URL.createObjectURL(file);
-            setVideoUrl(url);
-            if (turns.length === 0) {
-                setCurrentTime(0);
-                setIsClassifying(false);
-                setTurnToClassify(null);
-                setIsStatsOpen(false);
-            }
+            setVideoUrl(URL.createObjectURL(file));
         }
     };
 
-    const handleTimeUpdate = (time) => {
-        setCurrentTime(time);
-    };
-
-    const handleSubmitTurn = useCallback((data) => {
+    const handleAddEvent = useCallback((track, content) => {
         if (!videoFile) {
-            alert("Per favore, carica un video prima di registrare un turno.");
+            alert("Per favore, carica un video prima di registrare un evento.");
             return;
         }
-        const newTurn = {
-            ...data,
-            id: Date.now(),
-            timestamp: currentTime,
-            classification: null,
-        };
-        setTurnToClassify(newTurn);
-        setIsClassifying(true);
-        if (videoRef.current) videoRef.current.pause();
+        const newEvent = { id: Date.now(), timestamp: currentTime, track, content, turnId: null };
+        setEvents(prev => [...prev, newEvent].sort((a,b) => a.timestamp - b.timestamp));
     }, [currentTime, videoFile]);
-
-    const handleSaveClassification = (classification) => {
-        if (!turnToClassify) return;
-        const classifiedTurn = { ...turnToClassify, classification };
-        setTurns(prevTurns => [...prevTurns, classifiedTurn].sort((a,b) => a.timestamp - b.timestamp));
-        setIsClassifying(false);
-        setTurnToClassify(null);
-    };
-
-    const handleCloseClassification = () => {
-        setIsClassifying(false);
-        setTurnToClassify(null);
-    }
-
-    const handleDeleteTurn = (id) => {
-        if (window.confirm('Sei sicuro di voler cancellare questo turno?')) {
-            setTurns(prevTurns => prevTurns.filter(turn => turn.id !== id));
-        }
-    };
-
-    const handleExport = () => {
-        if (turns.length === 0) {
-            alert("Nessun dato da esportare.");
-            return;
-        }
-        exportToTxt(turns, `analisi_comunicazione_${videoFile?.name.split('.')[0] || 'export'}_${new Date().toISOString().split('T')[0]}.txt`);
-    };
-
-    const handleExportStats = () => {
-        if (!stats) {
-            alert("Nessuna statistica da esportare.");
-            return;
-        }
-        exportStatsToTxt(stats, `statistiche_${videoFile?.name.split('.')[0] || 'export'}_${new Date().toISOString().split('T')[0]}.txt`);
+    
+    const handleToggleEvent = (id) => {
+        setSelectedEventIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(id)) newSet.delete(id);
+            else newSet.add(id);
+            return newSet;
+        });
     };
     
-    const handleExportSession = () => {
-         if (turns.length === 0) {
-            alert("Nessuna sessione da salvare.");
+    const handleStartClassification = () => {
+        const toClassify = events.filter(e => selectedEventIds.has(e.id) && !e.turnId);
+        if (toClassify.length > 0) {
+            setClassificationTarget(toClassify.sort((a,b) => a.timestamp - b.timestamp));
+            if (videoRef.current) videoRef.current.pause();
+        } else {
+            alert("Per favore, seleziona degli eventi non ancora classificati.");
+        }
+    };
+
+    const handleStartModification = (turn) => {
+        const turnEvents = events.filter(e => turn.eventIds.includes(e.id));
+        const initialModalData = {
+            ...turn.classification,
+            eyeContact: turn.eyeContact,
+            overlappingDialogue: turn.overlappingDialogue,
+            focusAttentivoNuovo: turn.focusAttentivoNuovo,
+            focusComune: turn.focusComune,
+            focusNonComune: turn.focusNonComune,
+        };
+        setClassificationTarget(turnEvents);
+        setModificationTarget({ turn, initialModalData });
+        if (videoRef.current) videoRef.current.pause();
+    };
+    
+    const handleCloseClassification = () => {
+        setClassificationTarget(null);
+        setModificationTarget(null);
+    };
+
+    const handleSaveClassification = (data) => {
+        const {
+            eyeContact, overlappingDialogue, focusAttentivoNuovo, focusComune, focusNonComune,
+            ...classificationData
+        } = data;
+
+        if (modificationTarget) {
+            const updatedTurn = {
+                ...modificationTarget.turn,
+                eyeContact,
+                overlappingDialogue,
+                focusAttentivoNuovo,
+                focusComune,
+                focusNonComune,
+                classification: classificationData
+            };
+            setTurns(prev => prev.map(t => t.id === modificationTarget.turn.id ? updatedTurn : t));
+        } else {
+            if (!classificationTarget) return;
+            const turnId = `turn_${Date.now()}`;
+            const eventIds = new Set(classificationTarget.map(e => e.id));
+
+            const aggregateContent = (track) => classificationTarget
+                .filter(e => e.track === track)
+                .map(e => e.content)
+                .join('; ');
+                
+            const newTurn = {
+                id: turnId,
+                eventIds: Array.from(eventIds),
+                timestamp: classificationTarget[0].timestamp,
+                parentAction: aggregateContent('parentAction'),
+                parentSpeech: aggregateContent('parentSpeech'),
+                childAction: aggregateContent('childAction'),
+                childSpeech: aggregateContent('childSpeech'),
+                eyeContact,
+                overlappingDialogue,
+                focusAttentivoNuovo,
+                focusComune,
+                focusNonComune,
+                classification: classificationData
+            };
+
+            setTurns(prev => [...prev, newTurn].sort((a,b) => a.timestamp - b.timestamp));
+            setEvents(prev => prev.map(e => eventIds.has(e.id) ? { ...e, turnId: turnId } : e));
+            setSelectedEventIds(new Set());
+        }
+        
+        handleCloseClassification();
+    };
+    
+    const handleDeleteEvent = (id) => {
+        if (window.confirm('Sei sicuro di voler cancellare questo evento?')) {
+            setEvents(prev => prev.filter(e => e.id !== id));
+        }
+    };
+
+    const handleDeleteTurn = useCallback((turnToDelete) => {
+        if (window.confirm('Sei sicuro di voler cancellare questo turno classificato? Verranno ripristinati gli eventi originali.')) {
+            if (!turnToDelete) {
+                console.error("Attempted to delete a null/undefined turn.");
+                return;
+            }
+            const eventIdsToReset = new Set(turnToDelete.eventIds);
+
+            setEvents(prevEvents => 
+                prevEvents.map(event => {
+                    if (eventIdsToReset.has(event.id)) {
+                        return { ...event, turnId: null };
+                    }
+                    return event;
+                })
+            );
+
+            setTurns(prevTurns => prevTurns.filter(t => t.id !== turnToDelete.id));
+        }
+    }, []);
+    
+    const handleDisassociateEvent = (eventIdToUpdate) => {
+        let turnIdToUpdate = null;
+        const eventToUpdate = events.find(e => e.id === eventIdToUpdate);
+        if (eventToUpdate) {
+            turnIdToUpdate = eventToUpdate.turnId;
+        }
+
+        if (!turnIdToUpdate) return;
+
+        const turnToUpdate = turns.find(t => t.id === turnIdToUpdate);
+        const turnBecomesEmpty = turnToUpdate && turnToUpdate.eventIds.length === 1;
+
+        setEvents(prevEvents =>
+            prevEvents.map(event =>
+                event.id === eventIdToUpdate
+                    ? { ...event, turnId: null }
+                    : event
+            )
+        );
+
+        if (turnBecomesEmpty) {
+            setTurns(prevTurns => prevTurns.filter(turn => turn.id !== turnIdToUpdate));
+        } else {
+            setTurns(prevTurns =>
+                prevTurns.map(turn =>
+                    turn.id === turnIdToUpdate
+                        ? { ...turn, eventIds: turn.eventIds.filter(id => id !== eventIdToUpdate) }
+                        : turn
+                )
+            );
+        }
+    };
+
+    const handleStartTurnEdit = useCallback((turnId) => {
+        const turn = turns.find(t => t.id === turnId);
+        if (turn) {
+            setEditingTurnId(turnId);
+            setEditedEventIds(new Set(turn.eventIds));
+            handleCloseClassification();
+        }
+    }, [turns]);
+
+    const handleCancelTurnEdit = () => {
+        setEditingTurnId(null);
+        setEditedEventIds(new Set());
+    };
+
+    const handleTurnEditToggleEvent = (eventId) => {
+        setEditedEventIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(eventId)) {
+                newSet.delete(eventId);
+            } else {
+                newSet.add(eventId);
+            }
+            return newSet;
+        });
+    };
+
+    const handleSaveTurnEdit = useCallback(() => {
+        if (!editingTurnId) return;
+        const originalTurn = turns.find(t => t.id === editingTurnId);
+        if (!originalTurn) return;
+
+        const newEventIds = editedEventIds;
+
+        if (newEventIds.size === 0) {
+            handleDeleteTurn(originalTurn);
+            handleCancelTurnEdit();
             return;
         }
+
+        const originalEventIds = new Set(originalTurn.eventIds);
+        
+        setTurns(prevTurns => prevTurns.map(t => {
+            if (t.id === editingTurnId) {
+                const eventsForTurn = events.filter(e => newEventIds.has(e.id)).sort((a,b) => a.timestamp - b.timestamp);
+                const aggregateContent = (track) => eventsForTurn.filter(e => e.track === track).map(e => e.content).join('; ');
+                return {
+                    ...t,
+                    eventIds: Array.from(newEventIds),
+                    timestamp: eventsForTurn.length > 0 ? eventsForTurn[0].timestamp : t.timestamp,
+                    parentAction: aggregateContent('parentAction'),
+                    parentSpeech: aggregateContent('parentSpeech'),
+                    childAction: aggregateContent('childAction'),
+                    childSpeech: aggregateContent('childSpeech'),
+                };
+            }
+            return t;
+        }));
+
+        setEvents(prevEvents => prevEvents.map(e => {
+            const wasInTurn = originalEventIds.has(e.id);
+            const isInNewTurn = newEventIds.has(e.id);
+            if (wasInTurn && !isInNewTurn) return { ...e, turnId: null };
+            if (!wasInTurn && isInNewTurn) return { ...e, turnId: editingTurnId };
+            return e;
+        }));
+
+        handleCancelTurnEdit();
+    }, [editingTurnId, editedEventIds, events, turns, handleDeleteTurn]);
+
+
+    const handleSeek = (time) => {
+        if(videoRef.current) videoRef.current.currentTime = time;
+    }
+    
+    const handleExport = () => exportToTxt(turns, `analisi_comunicazione_${videoFile?.name.split('.')[0] || 'export'}.txt`);
+    const handleExportStats = () => exportStatsToTxt(stats, `statistiche_${videoFile?.name.split('.')[0] || 'export'}.txt`);
+    const handleExportSession = () => {
         const sessionData = {
             videoFilename: videoFile?.name || 'unknown_video',
             analysisDate: new Date().toISOString(),
-            turns: turns
+            events,
+            turns
         };
         const blob = new Blob([JSON.stringify(sessionData, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `sessione_${videoFile?.name.split('.')[0] || 'export'}_${new Date().toISOString().split('T')[0]}.json`;
+        link.download = `sessione_${videoFile?.name.split('.')[0] || 'export'}.json`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -888,62 +1505,77 @@ const App = () => {
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
-                const text = e.target?.result;
-                if (typeof text !== 'string') throw new Error("Il file non è un testo valido.");
-                const data = JSON.parse(text);
-                if (!data.videoFilename || !Array.isArray(data.turns)) {
+                const data = JSON.parse(e.target.result);
+                if (!data.videoFilename || (!Array.isArray(data.events) && !Array.isArray(data.interactions)) || !Array.isArray(data.turns)) {
                     throw new Error("Formato del file di sessione non valido.");
                 }
+                setEvents(data.events || data.interactions);
                 setTurns(data.turns);
-                alert(`Sessione per il video "${data.videoFilename}" caricata con successo.\n\nAssicurati di caricare il file video corretto per continuare l'analisi.`);
+                alert(`Sessione per "${data.videoFilename}" caricata. Carica il video corretto.`);
             } catch (error) {
-                console.error("Errore nell'importazione della sessione:", error);
-                alert(`Errore durante l'importazione del file di sessione: ${error.message}`);
+                alert(`Errore importazione: ${error.message}`);
             }
         };
         reader.readAsText(file);
     };
 
-    const isInputDisabled = !videoFile || isClassifying;
-
     return (
         <div className="min-h-screen bg-slate-900 text-gray-200 font-sans">
-            <div className="max-w-screen-xl mx-auto p-4 sm:p-6 lg:p-8 relative">
+            <div className="max-w-screen-xl mx-auto p-4 sm:p-6 lg:p-8">
                 <header className="text-center mb-8 pb-4 border-b border-slate-700/50">
                     <h1 className="text-4xl lg:text-5xl font-bold text-cyan-400 tracking-tight">Analizzatore di Turni Comunicativi</h1>
-                    <p className="text-slate-400 mt-2 text-lg">Carica un video, descrivi i turni di comunicazione e classificali.</p>
+                    <p className="text-slate-400 mt-2 text-lg">Carica un video, registra gli eventi e classifica i turni sulla timeline.</p>
                 </header>
-                <div className="absolute top-8 right-8 bg-slate-800 border border-cyan-500/50 text-cyan-300 rounded-lg px-4 py-2 text-center">
-                    <div className="text-3xl font-bold">{turns.length}</div>
-                    <div className="text-sm uppercase tracking-wider">Turni Registrati</div>
-                </div>
                 <main className="flex flex-col gap-8">
                     <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
                         <div className="lg:col-span-3">
                             <VideoPlayer 
                                 videoUrl={videoUrl} 
                                 onFileChange={handleFileChange} 
-                                onTimeUpdate={handleTimeUpdate} 
+                                onTimeUpdate={setCurrentTime} 
                                 videoRef={videoRef}
                                 onImportSession={handleImportSession}
+                                onDurationChange={setVideoDuration}
                             />
                         </div>
                         <div className="lg:col-span-2 h-[500px]">
-                           {isClassifying ? (
-                               <ClassificationPanel onSave={handleSaveClassification} onClose={handleCloseClassification} />
+                           {(classificationTarget || modificationTarget) ? (
+                                <ClassificationForm
+                                    key={modificationTarget ? modificationTarget.turn.id : (classificationTarget ? classificationTarget[0].id : 'new')}
+                                    events={classificationTarget}
+                                    initialData={modificationTarget?.initialModalData}
+                                    onSave={handleSaveClassification}
+                                    onCancel={handleCloseClassification}
+                                />
                            ) : (
-                               <TurnInputForm onSubmit={handleSubmitTurn} disabled={isInputDisabled} />
+                               <LiveLogger onAddEvent={handleAddEvent} disabled={!videoFile || editingTurnId} />
                            )}
                         </div>
                     </div>
-                    <div style={{ filter: isClassifying ? 'blur(2px)' : 'none', transition: 'filter 0.3s' }}>
-                        <TurnLog 
-                            turns={turns} 
-                            onExport={handleExport} 
-                            isExportDisabled={turns.length === 0}
-                            onCalculateStats={() => setIsStatsOpen(true)}
+                    <div>
+                        <TimelinePanel 
+                            events={events}
+                            turns={turns}
+                            selectedEventIds={selectedEventIds}
+                            onToggleSelection={handleToggleEvent}
+                            onStartClassification={handleStartClassification}
+                            onDeleteEvent={handleDeleteEvent}
                             onDeleteTurn={handleDeleteTurn}
+                            onModifyTurn={handleStartModification}
+                            onExport={handleExport}
+                            onCalculateStats={() => setIsStatsOpen(true)}
                             onExportSession={handleExportSession}
+                            isDataPresent={turns.length > 0 || events.length > 0}
+                            onSeek={handleSeek}
+                            videoDuration={videoDuration}
+                            videoFilename={videoFile?.name.split('.')[0]}
+                            onDisassociateEvent={handleDisassociateEvent}
+                            editingTurnId={editingTurnId}
+                            onStartTurnEdit={handleStartTurnEdit}
+                            onCancelTurnEdit={handleCancelTurnEdit}
+                            onSaveTurnEdit={handleSaveTurnEdit}
+                            editedEventIds={editedEventIds}
+                            onTurnEditToggleEvent={handleTurnEditToggleEvent}
                         />
                     </div>
                 </main>
@@ -964,7 +1596,7 @@ const rootElement = document.getElementById('root');
 if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
-const root = ReactDOM.createRoot(rootElement);
+const root = window.ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
     <App />
@@ -972,5 +1604,6 @@ root.render(
 );
 
     </script>
-  </body>
+  <script type="module" src="/index.tsx"></script>
+</body>
 </html>
